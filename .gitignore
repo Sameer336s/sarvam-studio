@@ -1,0 +1,17 @@
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+coverage
+.vite
+tsconfig.tsbuildinfo
+android/build/
+*.apk
+!SarvamStudio-2.0.apk
+hs_err_pid*.log
+replay_pid*.log

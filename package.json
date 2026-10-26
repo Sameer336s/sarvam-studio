@@ -1,0 +1,66 @@
+{
+  "name": "sarvam-studio",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "description": "Glass-morphism AI chat studio for Sarvam AI, OpenAI, Anthropic, Google Gemini and any OpenAI-compatible endpoint \u2014 MCP tools, editable model catalogue, encrypted API keys that survive a restart.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit false --emitDeclarationOnly false"
+  },
+  "dependencies": {
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  },
+  "keywords": [
+    "sarvam",
+    "sarvam-ai",
+    "llm",
+    "ai-chat",
+    "mcp",
+    "model-context-protocol",
+    "openai",
+    "anthropic",
+    "claude",
+    "gemini",
+    "react",
+    "typescript",
+    "vite",
+    "tailwindcss",
+    "glassmorphism",
+    "android",
+    "apk",
+    "ollama",
+    "openrouter"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "Samir Sayyad",
+    "url": "https://github.com/Sameer336s"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sameer336s/sarvam-studio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Sameer336s/sarvam-studio/issues"
+  },
+  "homepage": "https://github.com/Sameer336s/sarvam-studio#readme",
+  "engines": {
+    "node": ">=18"
+  }
+}
