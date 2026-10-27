@@ -79,11 +79,7 @@ function Shell() {
 
   return (
     <div className="relative flex h-full w-full overflow-hidden">
-      <div className="app-bg" data-style={settings.bgStyle} aria-hidden>
-        <div className="blob blob-a" />
-        <div className="blob blob-b" />
-        <div className="blob blob-c" />
-      </div>
+      <div className="app-bg" data-style={settings.bgStyle} aria-hidden />
 
       <div className="relative z-10 flex h-full w-full">
         <Sidebar

@@ -1,11 +1,14 @@
-import { useState, type ReactNode } from "react";
-import { Check, Copy } from "lucide-react";
+import { memo, useState, type ReactNode } from "react";
+import { Check, Copy, Download, X } from "lucide-react";
 
 /* ---------------------------------------------------------------- inline */
 
-const INLINE = /(\*\*[^*]+\*\*|__[^_]+__|\*[^*\n]+\*|_[^_\n]+_|`[^`]+`|\[[^\]]+\]\([^)\s]+\))/g;
+const INLINE =
+  /(!\[[^\]]*\]\([^)\s]+\)|\*\*[^*]+\*\*|__[^_]+__|\*[^*\n]+\*|_[^_\n]+_|`[^`]+`|\[[^\]]+\]\([^)\s]+\))/g;
 
-function inline(text: string, keyBase: string): ReactNode[] {
+type ImageSink = (url: string, alt: string) => ReactNode;
+
+function inline(text: string, keyBase: string, onImage: ImageSink): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
   let match: RegExpExecArray | null;
@@ -15,7 +18,11 @@ function inline(text: string, keyBase: string): ReactNode[] {
     if (match.index > last) out.push(text.slice(last, match.index));
     const token = match[0];
     const key = `${keyBase}-i${i++}`;
-    if (token.startsWith("**") || token.startsWith("__")) {
+    if (token.startsWith("![")) {
+      const m = token.match(/^!\[([^\]]*)\]\(([^)\s]+)\)$/);
+      if (m) out.push(onImage(m[2], m[1]) as any);
+      else out.push(token);
+    } else if (token.startsWith("**") || token.startsWith("__")) {
       out.push(<strong key={key}>{token.slice(2, -2)}</strong>);
     } else if (token.startsWith("`")) {
       out.push(<code key={key}>{token.slice(1, -1)}</code>);
@@ -45,20 +52,20 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
     try {
       await navigator.clipboard.writeText(code);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
+      setTimeout(() => setCopied(false), 1200);
     } catch {
       /* clipboard blocked */
     }
   };
   return (
-    <div className="my-3 overflow-hidden rounded-2xl border border-white/10 bg-black/35 backdrop-blur">
-      <div className="flex items-center justify-between border-b border-white/10 px-3 py-1.5">
-        <span className="font-mono text-[11px] uppercase tracking-wider text-muted">
+    <div className="my-2.5 overflow-hidden rounded-lg border border-white/10 bg-[#0b0d10]">
+      <div className="flex items-center justify-between border-b border-white/10 px-2.5 py-1">
+        <span className="font-mono text-[10.5px] uppercase tracking-wider text-neutral-400">
           {lang || "code"}
         </span>
         <button
           onClick={copy}
-          className="btn btn-ghost h-6 gap-1 rounded-lg px-2 text-[11px]"
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] text-neutral-400 hover:bg-white/10 hover:text-neutral-100"
           type="button"
         >
           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
@@ -74,9 +81,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
 
 /* ---------------------------------------------------------------- blocks */
 
-type Block =
-  | { kind: "code"; code: string; lang?: string }
-  | { kind: "text"; lines: string[] };
+type Block = { kind: "code"; code: string; lang?: string } | { kind: "text"; lines: string[] };
 
 function splitBlocks(src: string): Block[] {
   const blocks: Block[] = [];
@@ -98,7 +103,7 @@ function splitBlocks(src: string): Block[] {
   return blocks;
 }
 
-function renderText(lines: string[], keyBase: string): ReactNode[] {
+function renderText(lines: string[], keyBase: string, onImage: ImageSink): ReactNode[] {
   const out: ReactNode[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
   let table: string[] | null = null;
@@ -107,13 +112,15 @@ function renderText(lines: string[], keyBase: string): ReactNode[] {
 
   const flushPara = () => {
     if (!para.length) return;
-    out.push(<p key={`${keyBase}-p${key++}`}>{inline(para.join(" "), `${keyBase}-p${key}`)}</p>);
+    out.push(
+      <p key={`${keyBase}-p${key++}`}>{inline(para.join(" "), `${keyBase}-p${key}`, onImage)}</p>,
+    );
     para = [];
   };
   const flushList = () => {
     if (!list) return;
     const items = list.items.map((it, i) => (
-      <li key={`${keyBase}-li${key}-${i}`}>{inline(it, `${keyBase}-li${key}-${i}`)}</li>
+      <li key={`${keyBase}-li${key}-${i}`}>{inline(it, `${keyBase}-li${key}-${i}`, onImage)}</li>
     ));
     out.push(
       list.ordered ? (
@@ -143,7 +150,7 @@ function renderText(lines: string[], keyBase: string): ReactNode[] {
             <thead>
               <tr>
                 {head.map((h, i) => (
-                  <th key={i}>{inline(h, `${keyBase}-th${i}`)}</th>
+                  <th key={i}>{inline(h, `${keyBase}-th${i}`, onImage)}</th>
                 ))}
               </tr>
             </thead>
@@ -151,7 +158,7 @@ function renderText(lines: string[], keyBase: string): ReactNode[] {
               {body.map((r, ri) => (
                 <tr key={ri}>
                   {r.map((c, ci) => (
-                    <td key={ci}>{inline(c, `${keyBase}-td${ri}-${ci}`)}</td>
+                    <td key={ci}>{inline(c, `${keyBase}-td${ri}-${ci}`, onImage)}</td>
                   ))}
                 </tr>
               ))}
@@ -184,7 +191,7 @@ function renderText(lines: string[], keyBase: string): ReactNode[] {
       flushPara();
       flushList();
       const level = heading[1].length;
-      const content = inline(heading[2], `${keyBase}-h${key}`);
+      const content = inline(heading[2], `${keyBase}-h${key}`, onImage);
       const k = `${keyBase}-h${key++}`;
       if (level === 1) out.push(<h1 key={k}>{content}</h1>);
       else if (level === 2) out.push(<h2 key={k}>{content}</h2>);
@@ -205,7 +212,7 @@ function renderText(lines: string[], keyBase: string): ReactNode[] {
       flushList();
       out.push(
         <blockquote key={`${keyBase}-q${key++}`}>
-          {inline(quote[1], `${keyBase}-q${key}`)}
+          {inline(quote[1], `${keyBase}-q${key}`, onImage)}
         </blockquote>,
       );
       continue;
@@ -231,7 +238,29 @@ function renderText(lines: string[], keyBase: string): ReactNode[] {
   return out;
 }
 
-export function Markdown({ text }: { text: string }) {
+/* -------------------------------------------------------------- component */
+
+export const Markdown = memo(function Markdown({ text }: { text: string }) {
+  const [zoom, setZoom] = useState<string | null>(null);
+
+  const onImage: ImageSink = (url, alt) => (
+    <button
+      key={url}
+      type="button"
+      onClick={() => setZoom(url)}
+      className="my-2 block max-w-full cursor-zoom-in"
+      title={alt || "Open image"}
+    >
+      <img
+        src={url}
+        alt={alt || "image"}
+        loading="lazy"
+        decoding="async"
+        className="max-h-[380px] w-auto max-w-full rounded-lg border border-white/10 object-contain"
+      />
+    </button>
+  );
+
   const blocks = splitBlocks(text || "");
   return (
     <div className="md">
@@ -239,9 +268,37 @@ export function Markdown({ text }: { text: string }) {
         b.kind === "code" ? (
           <CodeBlock key={i} code={b.code} lang={b.lang} />
         ) : (
-          <div key={i}>{renderText(b.lines, `b${i}`)}</div>
+          <div key={i}>{renderText(b.lines, `b${i}`, onImage)}</div>
         ),
+      )}
+
+      {zoom && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-4"
+          onClick={() => setZoom(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <img src={zoom} alt="attachment" className="max-h-full max-w-full object-contain" />
+          <div className="absolute right-4 top-4 flex gap-2" onClick={(e) => e.stopPropagation()}>
+            <a
+              href={zoom}
+              download="image"
+              className="rounded-lg bg-white/10 p-2 text-white hover:bg-white/20"
+              title="Download"
+            >
+              <Download className="h-4 w-4" />
+            </a>
+            <button
+              onClick={() => setZoom(null)}
+              className="rounded-lg bg-white/10 p-2 text-white hover:bg-white/20"
+              title="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
-}
+});

@@ -1,30 +1,47 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
   ArrowUp,
   Bot,
+  Check,
   ChevronDown,
   Copy,
-  CornerDownLeft,
+  FileText,
+  Image as ImageIcon,
+  Loader2,
   Paperclip,
   Pencil,
   Plug,
   RefreshCw,
+  Settings2,
   Square,
   Trash2,
   User,
   Wrench,
-  Check,
-  AlertTriangle,
-  Loader2,
-  Sparkles,
+  X,
 } from "lucide-react";
 import { Markdown } from "@/lib/markdown";
 import { useApp, customEndpointFor } from "@/lib/store";
-import { completeOnce, streamChat, ProviderError, type ApiMessage, type ToolSpec } from "@/lib/api";
+import {
+  completeOnce,
+  streamChat,
+  ProviderError,
+  toApiMessages,
+  type ApiMessage,
+  type ToolSpec,
+} from "@/lib/api";
 import { callToolOnce, type McpServer, type McpTool } from "@/lib/mcp";
-import type { ChatMsg, ToolRun } from "@/lib/types";
+import { filesToAttachments, formatBytes } from "@/lib/attach";
+import {
+  ATTACH,
+  DEFAULT_PARAMS,
+  type Attachment,
+  type ChatMsg,
+  type ModelParams,
+  type ToolRun,
+} from "@/lib/types";
 import { cn, fmtTime } from "@/lib/cn";
-import { IconButton } from "@/components/ui";
+import { Button, IconButton, Modal, Select, Slider, Switch } from "@/components/ui";
 import { ModelPicker } from "@/components/ModelPicker";
 import { toast } from "@/components/Toast";
 import { PROVIDERS } from "@/lib/catalog";
@@ -69,22 +86,34 @@ export function ChatView({
   const active = store.active;
 
   const [input, setInput] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
+  const [paramsOpen, setParamsOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [attachBusy, setAttachBusy] = useState(false);
+
   const abortRef = useRef<AbortController | null>(null);
-  // Async continuations (regenerate / edit & resend) must read the *latest*
-  // conversations, not the ones captured when the handler was created.
-  const storeRef = useRef(store);
-  storeRef.current = store;
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const stickToBottom = useRef(true);
+
+  // Async continuations must read the *latest* state, not the render they captured.
+  const storeRef = useRef(store);
+  storeRef.current = store;
 
   const model = store.modelById(modelId) ?? store.activeModel ?? store.visibleModels[0];
   const tools = useMemo(() => bindTools(mcpServers), [mcpServers]);
   const messages = active?.messages ?? [];
   const lastMsg = messages[messages.length - 1];
+
+  const params: ModelParams = useMemo(
+    () => ({ ...settings.params, ...(active?.params ?? {}) }),
+    [settings.params, active?.params],
+  );
+  const hasOverrides = !!active?.params && Object.keys(active.params).length > 0;
 
   /* ------------------------------------------------------------- scrolling */
   useEffect(() => {
@@ -104,57 +133,75 @@ export function ChatView({
     const el = taRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 260)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
   };
   useEffect(autoGrow, [input]);
 
-  /* ------------------------------------------------------------------ send */
-  const buildHistory = (msgs: ChatMsg[]): ApiMessage[] => {
-    const trimmed = msgs.slice(-Math.max(2, settings.contextMessages));
-    return trimmed
-      .filter((m) => m.content.trim() && !m.error)
-      .map((m) => ({ role: m.role, content: m.content }));
-  };
+  /* ------------------------------------------------------------ attachments */
+  const addFiles = useCallback(
+    async (files: FileList | File[]) => {
+      if (!files || files.length === 0) return;
+      setAttachBusy(true);
+      try {
+        const { added, skipped } = await filesToAttachments(files, attachments.length);
+        if (added.length) setAttachments((prev) => [...prev, ...added].slice(0, ATTACH.maxFiles));
+        if (skipped.length) toast(`Skipped: ${skipped.join(", ")}`, "warn");
+        if (added.length) toast(`${added.length} file${added.length === 1 ? "" : "s"} attached`, "ok");
+      } finally {
+        setAttachBusy(false);
+      }
+    },
+    [attachments.length],
+  );
 
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
+  /* ------------------------------------------------------------------ send */
   const runSend = useCallback(
-    async (textArg?: string, opts: { reuseUser?: boolean } = {}) => {
+    async (textArg?: string) => {
       const text = (textArg ?? input).trim();
-      if (!text || busy) return;
+      const atts = textArg ? [] : attachments;
+      if ((!text && atts.length === 0) || busy) return;
       if (!model) {
         toast("Pick a model first.", "warn");
         return;
       }
 
-      const endpointCfg = customEndpointFor(model, customProviders);
-      const apiKey = storeRef.current.keyFor(model.provider, model.providerRef);
+      const live = storeRef.current;
+      const endpointCfg = customEndpointFor(model, live.customProviders);
+      const apiKey = live.keyFor(model.provider, model.providerRef);
       if (!apiKey && model.provider !== "custom") {
-        toast(`No ${PROVIDERS[model.provider].name} API key yet — add it in Settings → Providers.`, "warn");
+        toast(`No ${PROVIDERS[model.provider].name} API key yet — add it in Settings → API keys.`, "warn");
         onOpenSettings();
         return;
       }
       if (model.provider === "custom" && !endpointCfg?.endpoint) {
-        toast("This custom model has no endpoint. Set it in Settings → Providers.", "warn");
+        toast("This model has no endpoint. Set it in Settings → API keys.", "warn");
         onOpenSettings();
         return;
       }
 
-      const live = storeRef.current;
       let chatId = live.activeId;
-      if (!chatId) chatId = store.newChat(model.id);
+      if (!chatId) chatId = live.newChat(model.id);
       const conv = live.conversations.find((c) => c.id === chatId);
       const history = conv?.messages ?? [];
+      const chatParams: ModelParams = { ...live.settings.params, ...(conv?.params ?? {}) };
 
       const userMsg: ChatMsg = {
         id: crypto.randomUUID(),
         role: "user",
         content: text,
         createdAt: Date.now(),
+        attachments: atts.length ? atts : undefined,
       };
-      if (!opts.reuseUser) store.addMessage(chatId, userMsg);
+      live.addMessage(chatId, userMsg);
       setInput("");
+      setAttachments([]);
 
       const asstId = crypto.randomUUID();
-      store.addMessage(chatId, {
+      live.addMessage(chatId, {
         id: asstId,
         role: "assistant",
         content: "",
@@ -162,11 +209,24 @@ export function ChatView({
         modelId: model.id,
       });
 
+      // Build the wire messages, including any images/text files.
       const apiMessages: ApiMessage[] = [];
-      if (settings.systemPrompt.trim())
-        apiMessages.push({ role: "system", content: settings.systemPrompt.trim() });
-      apiMessages.push(...buildHistory(history));
-      apiMessages.push({ role: "user", content: text });
+      const sys = live.settings.systemPrompt.trim();
+      if (sys) apiMessages.push({ role: "system", content: sys });
+      const trimmed = history.slice(-Math.max(2, live.settings.contextMessages));
+      apiMessages.push(
+        ...toApiMessages(
+          [
+            ...trimmed.filter((m) => !m.error).map((m) => ({
+              role: m.role,
+              content: m.content,
+              attachments: m.attachments,
+            })),
+            { role: "user" as const, content: text, attachments: atts },
+          ],
+          model.provider === "anthropic" ? "anthropic" : "openai",
+        ),
+      );
 
       setBusy(true);
       setStreamingId(asstId);
@@ -174,33 +234,46 @@ export function ChatView({
       const ctrl = new AbortController();
       abortRef.current = ctrl;
 
-      const patch = (p: Partial<ChatMsg>) => store.updateMessage(chatId!, asstId, p);
+      /* --- rAF-batched patching: one React update per frame, not per token --- */
+      let pendingContent = "";
+      let pendingReasoning = "";
+      let frame: number | null = null;
+      const flush = () => {
+        frame = null;
+        const patch: Partial<ChatMsg> = {};
+        if (pendingContent) patch.content = pendingContent;
+        if (pendingReasoning) patch.reasoning = pendingReasoning;
+        if (Object.keys(patch).length) storeRef.current.updateMessage(chatId!, asstId, patch);
+      };
+      const schedule = () => {
+        if (frame === null) frame = requestAnimationFrame(flush);
+      };
+      const flushNow = () => {
+        if (frame !== null) {
+          cancelAnimationFrame(frame);
+          frame = null;
+        }
+        flush();
+      };
+
       const toolRuns: ToolRun[] = [];
 
       try {
         /* ---- optional tool-planning round ---- */
         let followUp: ApiMessage[] | null = null;
         if (tools.length > 0 && model.capabilities.includes("tools")) {
-          let plan;
-          try {
-            plan = await completeOnce({
-              model,
-              apiKey,
-              messages: apiMessages,
-              custom: endpointCfg,
-              temperature: settings.temperature,
-              topP: settings.topP,
-              maxTokens: settings.maxTokens,
-              tools: tools.map((t) => t.spec),
-              signal: ctrl.signal,
-            });
-          } catch (e) {
-            const msg = e instanceof ProviderError ? e.message : "Tool planning failed.";
-            throw new Error(msg);
-          }
+          const plan = await completeOnce({
+            model,
+            apiKey,
+            messages: apiMessages,
+            custom: endpointCfg,
+            params: chatParams,
+            tools: tools.map((t) => t.spec),
+            signal: ctrl.signal,
+          });
 
           if (plan.toolCalls.length > 0) {
-            const results: { call: (typeof plan.toolCalls)[number]; output: string; run: ToolRun }[] = [];
+            const results: { call: (typeof plan.toolCalls)[number]; output: string }[] = [];
             for (const call of plan.toolCalls) {
               const bound = tools.find((t) => t.spec.name === call.name);
               const run: ToolRun = {
@@ -211,14 +284,14 @@ export function ChatView({
                 status: "running",
               };
               toolRuns.push(run);
-              patch({ toolRuns: [...toolRuns] });
+              storeRef.current.updateMessage(chatId, asstId, { toolRuns: [...toolRuns] });
               if (!bound) {
                 run.status = "error";
                 run.result = "No such tool is connected.";
               } else if (!bound.server.autoApprove) {
                 run.status = "ok";
                 run.result =
-                  "Skipped: this server requires manual approval. Enable auto-approve in MCP settings to let the model call it.";
+                  "Skipped: this server needs manual approval. Enable auto-approve in MCP settings to let the model call it.";
               } else {
                 const t0 = performance.now();
                 try {
@@ -230,11 +303,10 @@ export function ChatView({
                 }
                 run.ms = Math.round(performance.now() - t0);
               }
-              patch({ toolRuns: [...toolRuns] });
-              results.push({ call, output: run.result ?? "", run });
+              storeRef.current.updateMessage(chatId, asstId, { toolRuns: [...toolRuns] });
+              results.push({ call, output: run.result ?? "" });
             }
 
-            // build the follow-up conversation for the final answer
             if (model.provider === "anthropic") {
               followUp = [
                 ...apiMessages,
@@ -268,81 +340,85 @@ export function ChatView({
               ];
             }
           } else {
-            // Model answered directly — no follow-up request needed.
-            patch({ content: plan.text || "(empty response)" });
-            setBusy(false);
-            setStreamingId(null);
+            pendingContent = plan.text || "(empty response)";
+            flushNow();
             return;
           }
         }
 
-        /* ---- non-streaming final answer ---- */
-        if (!settings.streaming) {
+        /* ---- non-streaming answer ---- */
+        if (!live.settings.streaming) {
           const res = await completeOnce({
             model,
             apiKey,
             messages: followUp ?? apiMessages,
             custom: endpointCfg,
-            temperature: settings.temperature,
-            topP: settings.topP,
-            maxTokens: settings.maxTokens,
+            params: chatParams,
             tools: followUp ? undefined : tools.length ? tools.map((t) => t.spec) : undefined,
             signal: ctrl.signal,
           });
-          patch({ content: res.text || "(The model returned an empty response.)" });
-          if (ctrl.signal.aborted) patch({ stopped: true });
+          pendingContent = res.text || "(The model returned an empty response.)";
+          flushNow();
           return;
         }
 
-        /* ---- streaming final answer ---- */
+        /* ---- streaming answer ---- */
         const gen = await streamChat({
           model,
           apiKey,
           messages: followUp ?? apiMessages,
           custom: endpointCfg,
-          temperature: settings.temperature,
-          topP: settings.topP,
-          maxTokens: settings.maxTokens,
+          params: chatParams,
           tools: followUp ? undefined : tools.length ? tools.map((t) => t.spec) : undefined,
           signal: ctrl.signal,
         });
 
-        let acc = "";
-        let reasoning = "";
         let usage: ChatMsg["usage"];
         for await (const ev of gen) {
           if (ev.error) {
-            patch({ content: acc ? `${acc}\n\n⚠️ ${ev.error}` : ev.error, error: !acc });
+            pendingContent = pendingContent ? `${pendingContent}\n\n⚠️ ${ev.error}` : ev.error;
+            flushNow();
+            storeRef.current.updateMessage(chatId, asstId, { error: !pendingContent });
             break;
           }
           if (ev.reasoning) {
-            reasoning += ev.reasoning;
-            patch({ reasoning });
+            pendingReasoning += ev.reasoning;
+            schedule();
           }
           if (ev.delta) {
-            acc += ev.delta;
-            patch({ content: acc });
+            pendingContent += ev.delta;
+            schedule();
           }
           if (ev.usage) usage = { ...usage, ...ev.usage };
           if (ev.done) break;
         }
-        if (!acc && !reasoning) patch({ content: "(The model returned an empty response.)" });
-        if (usage) patch({ usage });
-        if (ctrl.signal.aborted) patch({ stopped: true });
+        flushNow();
+        if (!pendingContent && !pendingReasoning)
+          storeRef.current.updateMessage(chatId, asstId, {
+            content: "(The model returned an empty response.)",
+          });
+        if (usage) storeRef.current.updateMessage(chatId, asstId, { usage });
+        if (ctrl.signal.aborted) storeRef.current.updateMessage(chatId, asstId, { stopped: true });
       } catch (e) {
         if ((e as Error).name === "AbortError") {
-          patch({ stopped: true });
+          flushNow();
+          storeRef.current.updateMessage(chatId, asstId, { stopped: true });
         } else {
-          patch({ content: (e as Error).message || "Something went wrong.", error: true });
+          const msg =
+            e instanceof ProviderError ? e.message : (e as Error).message || "Something went wrong.";
+          pendingContent = pendingContent ? `${pendingContent}\n\n⚠️ ${msg}` : msg;
+          flushNow();
+          storeRef.current.updateMessage(chatId, asstId, { error: !pendingContent });
         }
       } finally {
+        if (frame !== null) cancelAnimationFrame(frame);
         setBusy(false);
         setStreamingId(null);
         abortRef.current = null;
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [input, busy, model, settings, tools, customProviders, store],
+    // callbacks below are stable (storeRef), so only these change identity
+    [input, attachments, busy, model, tools, onOpenSettings],
   );
 
   const stop = () => {
@@ -351,15 +427,21 @@ export function ChatView({
     setStreamingId(null);
   };
 
-  const regenerate = async (msg: ChatMsg) => {
-    if (!active || busy) return;
-    const idx = active.messages.findIndex((m) => m.id === msg.id);
-    const prevUser = [...active.messages.slice(0, idx)].reverse().find((m) => m.role === "user");
+  const regenerate = useCallback((msgId: string) => {
+    const live = storeRef.current;
+    const conv = live.conversations.find((c) => c.id === live.activeId);
+    if (!conv || busyRef.current) return;
+    const idx = conv.messages.findIndex((m) => m.id === msgId);
+    const prevUser = [...conv.messages.slice(0, idx)].reverse().find((m) => m.role === "user");
     if (!prevUser) return;
-    store.dropMessagesFrom(active.id, prevUser.id);
-    // wait a tick so the store update lands before we re-send
-    setTimeout(() => void runSend(prevUser.content), 30);
-  };
+    live.dropMessagesFrom(conv.id, prevUser.id);
+    setTimeout(() => void sendRef.current(prevUser.content), 30);
+  }, []);
+
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+  const sendRef = useRef(runSend);
+  sendRef.current = runSend;
 
   const submitEdit = () => {
     if (!editing || !active) return;
@@ -382,51 +464,92 @@ export function ChatView({
     }
   };
 
+  const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(e.clipboardData?.files ?? []);
+    if (files.length) {
+      e.preventDefault();
+      void addFiles(files);
+    }
+  };
+
+  const copyMessage = useCallback((id: string) => {
+    const conv = storeRef.current.conversations.find((c) => c.id === storeRef.current.activeId);
+    const m = conv?.messages.find((x) => x.id === id);
+    if (!m) return;
+    navigator.clipboard.writeText(m.content).then(
+      () => toast("Copied", "ok"),
+      () => toast("Clipboard blocked by the browser", "warn"),
+    );
+  }, []);
+
+  const deleteMessage = useCallback((id: string) => {
+    const live = storeRef.current;
+    if (live.activeId) live.deleteMessage(live.activeId, id);
+  }, []);
+
+  const startEdit = useCallback((id: string) => {
+    const conv = storeRef.current.conversations.find((c) => c.id === storeRef.current.activeId);
+    const m = conv?.messages.find((x) => x.id === id);
+    if (m) setEditing({ id, text: m.content });
+  }, []);
+
   const suggestions = [
-    { title: "Explain a concept", body: "Explain transformers to me like I'm a backend developer, with a diagram in text." },
+    { title: "Explain something", body: "Explain how vector databases work, with a small example." },
     { title: "Write code", body: "Write a Python script that watches a folder and uploads new files to S3." },
     { title: "In Indian languages", body: "मेरे लिए एक छोटी सी कहानी लिखो — बारिश और एक चाय की दुकान के बारे में." },
-    { title: "Use MCP tools", body: "Look up the documentation for this repo and summarise the architecture." },
+    { title: "Send a screenshot", body: "Attach a screenshot with the paperclip and ask what is wrong with the UI." },
   ];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div
+      className="relative flex min-h-0 flex-1 flex-col"
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target) setDragging(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragging(false);
+        if (e.dataTransfer?.files?.length) void addFiles(e.dataTransfer.files);
+      }}
+    >
+      {dragging && (
+        <div className="pointer-events-none absolute inset-2 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-accent/60 bg-accent/5">
+          <p className="text-sm font-medium text-accent">Drop images or files to attach</p>
+        </div>
+      )}
+
       {/* messages */}
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-4 sm:px-6"
+        className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-3 sm:px-6"
       >
         {messages.length === 0 ? (
-          <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center py-8">
-            <div
-              className="mb-5 flex h-16 w-16 items-center justify-center rounded-3xl shadow-lg"
-              style={{
-                background: "linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent-2)))",
-                boxShadow: "0 20px 50px -18px rgb(var(--accent))",
-              }}
-            >
-              <Sparkles className="h-8 w-8 text-white" />
+          <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center py-6">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-accent/15 text-accent">
+              <Bot className="h-6 w-6" />
             </div>
-            <h1 className="text-center text-2xl font-semibold tracking-tight text-ink">
+            <h1 className="text-center text-xl font-semibold tracking-tight text-ink">
               What should we build today?
             </h1>
-            <p className="mt-2 max-w-md text-center text-[13px] leading-relaxed text-muted">
-              {model ? `${model.name} · ${PROVIDERS[model.provider].name}` : "Pick a model"} — with{" "}
-              {tools.length > 0
-                ? `${tools.length} MCP tool${tools.length === 1 ? "" : "s"} ready`
-                : "MCP tools one click away"}
-              .
+            <p className="mt-1.5 max-w-md text-center text-[12.5px] leading-relaxed text-muted">
+              {model ? `${model.name} · ${PROVIDERS[model.provider].name}` : "Pick a model"} — send text,
+              images or files
+              {tools.length > 0 ? `, with ${tools.length} MCP tool${tools.length === 1 ? "" : "s"} ready` : ""}.
             </p>
-            <div className="mt-7 grid w-full gap-2.5 sm:grid-cols-2">
+            <div className="mt-6 grid w-full gap-2 sm:grid-cols-2">
               {suggestions.map((s) => (
                 <button
                   key={s.title}
                   onClick={() => void runSend(s.body)}
-                  className="glass rounded-2xl p-3.5 text-left transition-transform duration-200 hover:-translate-y-0.5"
+                  className="glass rounded-xl p-3 text-left transition-colors hover:border-accent/40"
                 >
                   <p className="text-[12.5px] font-semibold text-ink">{s.title}</p>
-                  <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-muted">{s.body}</p>
+                  <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-relaxed text-muted">{s.body}</p>
                 </button>
               ))}
             </div>
@@ -435,7 +558,7 @@ export function ChatView({
           <div
             className={cn(
               "mx-auto flex flex-col",
-              settings.density === "compact" ? "gap-3" : "gap-5",
+              settings.density === "compact" ? "gap-3" : "gap-4",
             )}
             style={{ maxWidth: `min(100%, var(--chat-width))` }}
           >
@@ -445,19 +568,14 @@ export function ChatView({
                 msg={m}
                 modelName={store.modelById(m.modelId ?? "")?.name}
                 isStreaming={streamingId === m.id}
-                editing={editing?.id === m.id ? editing.text : null}
-                onEditStart={() => setEditing({ id: m.id, text: m.content })}
-                onEditChange={(t) => setEditing({ id: m.id, text: t })}
+                editingValue={editing?.id === m.id ? editing.text : null}
+                onEditChange={(t) => setEditing((e) => (e ? { ...e, text: t } : e))}
                 onEditCancel={() => setEditing(null)}
                 onEditSubmit={submitEdit}
-                onRegenerate={() => void regenerate(m)}
-                onDelete={() => active && store.deleteMessage(active.id, m.id)}
-                onCopy={() => {
-                  navigator.clipboard.writeText(m.content).then(
-                    () => toast("Copied to clipboard", "ok"),
-                    () => toast("Clipboard blocked by the browser", "warn"),
-                  );
-                }}
+                onEditStart={startEdit}
+                onRegenerate={regenerate}
+                onDelete={deleteMessage}
+                onCopy={copyMessage}
               />
             ))}
           </div>
@@ -465,44 +583,95 @@ export function ChatView({
       </div>
 
       {/* composer */}
-      <div className="shrink-0 px-3 pb-3 sm:px-6 sm:pb-5">
+      <div className="shrink-0 px-3 pb-3 sm:px-6 sm:pb-4">
         <div className="mx-auto" style={{ maxWidth: `min(100%, var(--chat-width))` }}>
           {tools.length > 0 && (
-            <div className="mb-2 flex flex-wrap items-center gap-1.5 px-1">
+            <div className="mb-1.5 flex flex-wrap items-center gap-1.5 px-1">
               <Plug className="h-3 w-3 text-muted" />
               <span className="text-[11px] text-muted">MCP:</span>
-              {tools.slice(0, 6).map((t) => (
+              {tools.slice(0, 5).map((t) => (
                 <span key={t.spec.name} className="chip chip-accent text-[10px]">
                   {t.tool.name}
                 </span>
               ))}
-              {tools.length > 6 && (
-                <span className="text-[10.5px] text-muted">+{tools.length - 6} more</span>
+              {tools.length > 5 && (
+                <span className="text-[10.5px] text-muted">+{tools.length - 5} more</span>
               )}
             </div>
           )}
-          <div className="glass-hi rounded-glass-lg p-2">
+
+          {attachments.length > 0 && (
+            <div className="mb-1.5 flex flex-wrap gap-1.5 px-1">
+              {attachments.map((a) => (
+                <div
+                  key={a.id}
+                  className="group relative flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 py-1 pl-1.5 pr-1"
+                >
+                  {a.kind === "image" && a.dataUrl ? (
+                    <img src={a.dataUrl} alt={a.name} className="h-8 w-8 rounded object-cover" />
+                  ) : (
+                    <FileText className="h-4 w-4 text-muted" />
+                  )}
+                  <div className="max-w-[130px]">
+                    <p className="truncate text-[11px] text-ink">{a.name}</p>
+                    <p className="text-[9.5px] text-muted">{formatBytes(a.size)}</p>
+                  </div>
+                  <button
+                    onClick={() => removeAttachment(a.id)}
+                    className="rounded p-0.5 text-muted hover:bg-white/10 hover:text-red-400"
+                    title="Remove"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="glass-hi p-1.5">
             <textarea
               ref={taRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
+              onPaste={onPaste}
               rows={1}
-              placeholder={
-                model ? `Message ${model.name}…` : "Message…"
-              }
-              className="scroll-thin max-h-[260px] w-full resize-none bg-transparent px-2.5 py-2 text-[14px] leading-relaxed text-ink outline-none placeholder:text-muted/80"
-              style={{ minHeight: 44 }}
+              placeholder={model ? `Message ${model.name}…` : "Message…"}
+              className="scroll-thin max-h-[240px] w-full resize-none bg-transparent px-2 py-1.5 text-[14px] leading-relaxed text-ink outline-none placeholder:text-muted/70"
+              style={{ minHeight: 40 }}
             />
-            <div className="flex items-center justify-between gap-2 px-1 pb-0.5">
-              <div className="flex min-w-0 items-center gap-1">
+            <div className="flex items-center justify-between gap-1.5 px-0.5">
+              <div className="flex min-w-0 items-center gap-0.5">
                 <ModelPicker value={model?.id ?? ""} onChange={onModelChange} compact />
-                <IconButton title="MCP tools & setup" onClick={onOpenMcp} active={tools.length > 0}>
+                <IconButton
+                  title="Attach image or file"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={attachBusy || attachments.length >= ATTACH.maxFiles}
+                >
+                  {attachBusy ? <Loader2 className="h-4 w-4 spin" /> : <Paperclip className="h-4 w-4" />}
+                </IconButton>
+                <IconButton
+                  title="Model parameters"
+                  onClick={() => setParamsOpen(true)}
+                  active={hasOverrides}
+                >
+                  <Settings2 className="h-4 w-4" />
+                </IconButton>
+                <IconButton title="MCP tools" onClick={onOpenMcp} active={tools.length > 0}>
                   <Plug className="h-4 w-4" />
                 </IconButton>
-                <IconButton title="Settings" onClick={onOpenSettings}>
-                  <Paperclip className="h-4 w-4 rotate-45 opacity-0" />
-                </IconButton>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  multiple
+                  accept="image/*,text/*,.md,.json,.csv,.tsv,.log,.yml,.yaml,.xml,.html,.css,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.c,.h,.cpp,.cs,.php,.sh,.sql,.ini,.toml"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files;
+                    if (f) void addFiles(f);
+                    e.target.value = "";
+                  }}
+                />
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="hidden text-[10.5px] text-muted sm:block">
@@ -511,15 +680,15 @@ export function ChatView({
                 {busy ? (
                   <button
                     onClick={stop}
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-red-400/40 bg-red-500/20 text-red-200 transition hover:bg-red-500/30"
-                    title="Stop generating"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-red-400/40 bg-red-500/15 text-red-300 hover:bg-red-500/25"
+                    title="Stop"
                   >
                     <Square className="h-3.5 w-3.5" />
                   </button>
                 ) : (
                   <button
                     onClick={() => void runSend()}
-                    disabled={!input.trim()}
+                    disabled={!input.trim() && attachments.length === 0}
                     className="btn btn-accent flex h-9 w-9 items-center justify-center rounded-full p-0 disabled:opacity-35"
                     title="Send"
                   >
@@ -529,13 +698,179 @@ export function ChatView({
               </div>
             </div>
           </div>
-          <p className="mt-1.5 px-1 text-center text-[10.5px] leading-relaxed text-muted/70">
+
+          <p className="mt-1.5 hidden px-1 text-center text-[10.5px] leading-relaxed text-muted/70 sm:block">
             {model
-              ? `${model.name} · ${(model.contextWindow / 1000).toFixed(0)}K context · max ${model.maxTokens.toLocaleString()} output tokens`
+              ? `${model.name} · ${(model.contextWindow / 1000).toFixed(0)}K ctx · temp ${params.temperature.toFixed(2)} · max ${params.maxTokens} tokens`
               : "No model selected"}
-            {" · Keys stay on this device"}
+            {" · keys stay on this device"}
           </p>
         </div>
+      </div>
+
+      <Modal open={paramsOpen} onClose={() => setParamsOpen(false)} title="Model parameters">
+        <ParamsForm
+          params={params}
+          hasOverrides={hasOverrides}
+          onChange={(patch) => {
+            if (!active) return;
+            store.setChatParams(active.id, patch);
+          }}
+          onReset={() => {
+            if (active) store.clearChatParams(active.id);
+            toast("Back to global defaults", "ok");
+          }}
+          onEditDefaults={() => {
+            setParamsOpen(false);
+            onOpenSettings();
+          }}
+        />
+      </Modal>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ params */
+
+function ParamsForm({
+  params,
+  hasOverrides,
+  onChange,
+  onReset,
+  onEditDefaults,
+}: {
+  params: ModelParams;
+  hasOverrides: boolean;
+  onChange: (patch: Partial<ModelParams>) => void;
+  onReset: () => void;
+  onEditDefaults: () => void;
+}) {
+  const [stopText, setStopText] = useState(params.stop.join(", "));
+
+  return (
+    <div className="space-y-1">
+      <p className="mb-3 text-[11.5px] leading-relaxed text-muted">
+        These apply to this chat only, on top of your global defaults.
+        {hasOverrides && <span className="text-accent"> Overrides are active.</span>}
+      </p>
+
+      <Slider
+        label="Temperature"
+        value={params.temperature}
+        min={0}
+        max={2}
+        step={0.05}
+        onChange={(v) => onChange({ temperature: v })}
+      />
+      <Slider
+        label="Top-p"
+        value={params.topP}
+        min={0.1}
+        max={1}
+        step={0.05}
+        onChange={(v) => onChange({ topP: v })}
+      />
+      <Slider
+        label="Top-k (0 = off)"
+        value={params.topK ?? 0}
+        min={0}
+        max={100}
+        onChange={(v) => onChange({ topK: v === 0 ? null : v })}
+      />
+      <Slider
+        label="Max output tokens"
+        value={params.maxTokens}
+        min={256}
+        max={32768}
+        step={256}
+        onChange={(v) => onChange({ maxTokens: v })}
+      />
+
+      <div className="grid grid-cols-2 gap-3 pt-2">
+        <div>
+          <label className="label">Presence penalty</label>
+          <input
+            type="number"
+            step="0.1"
+            min="-2"
+            max="2"
+            value={params.presencePenalty}
+            onChange={(e) => onChange({ presencePenalty: Number(e.target.value) || 0 })}
+            className="field"
+          />
+        </div>
+        <div>
+          <label className="label">Frequency penalty</label>
+          <input
+            type="number"
+            step="0.1"
+            min="-2"
+            max="2"
+            value={params.frequencyPenalty}
+            onChange={(e) => onChange({ frequencyPenalty: Number(e.target.value) || 0 })}
+            className="field"
+          />
+        </div>
+        <div>
+          <label className="label">Seed (blank = random)</label>
+          <input
+            type="number"
+            value={params.seed ?? ""}
+            placeholder="random"
+            onChange={(e) => onChange({ seed: e.target.value === "" ? null : Number(e.target.value) })}
+            className="field"
+          />
+        </div>
+        <div>
+          <label className="label">Reasoning effort</label>
+          <Select
+            value={params.reasoningEffort}
+            onChange={(v) => onChange({ reasoningEffort: v })}
+            options={[
+              { value: "auto", label: "Auto (provider default)" },
+              { value: "low", label: "Low" },
+              { value: "medium", label: "Medium" },
+              { value: "high", label: "High" },
+            ]}
+          />
+        </div>
+      </div>
+
+      <div className="pt-2">
+        <label className="label">Stop sequences (comma separated, max 4)</label>
+        <input
+          value={stopText}
+          onChange={(e) => setStopText(e.target.value)}
+          onBlur={() =>
+            onChange({
+              stop: stopText
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+                .slice(0, 4),
+            })
+          }
+          placeholder="e.g. \n\nUser:, </answer>"
+          className="field"
+        />
+      </div>
+
+      <div className="pt-1">
+        <Switch
+          label="JSON mode"
+          hint="Ask the provider to return valid JSON (supported models only)."
+          checked={params.jsonMode}
+          onChange={(v) => onChange({ jsonMode: v })}
+        />
+      </div>
+
+      <div className="flex justify-between gap-2 pt-3">
+        <Button variant="ghost" onClick={onEditDefaults}>
+          Edit global defaults
+        </Button>
+        <Button variant="ghost" onClick={onReset} disabled={!hasOverrides}>
+          Reset this chat
+        </Button>
       </div>
     </div>
   );
@@ -543,15 +878,15 @@ export function ChatView({
 
 /* ------------------------------------------------------------- message row */
 
-function MessageRow({
+const MessageRow = memo(function MessageRow({
   msg,
   modelName,
   isStreaming,
-  editing,
-  onEditStart,
+  editingValue,
   onEditChange,
   onEditCancel,
   onEditSubmit,
+  onEditStart,
   onRegenerate,
   onDelete,
   onCopy,
@@ -559,14 +894,14 @@ function MessageRow({
   msg: ChatMsg;
   modelName?: string;
   isStreaming: boolean;
-  editing: string | null;
-  onEditStart: () => void;
+  editingValue: string | null;
   onEditChange: (t: string) => void;
   onEditCancel: () => void;
   onEditSubmit: () => void;
-  onRegenerate: () => void;
-  onDelete: () => void;
-  onCopy: () => void;
+  onEditStart: (id: string) => void;
+  onRegenerate: (id: string) => void;
+  onDelete: (id: string) => void;
+  onCopy: (id: string) => void;
 }) {
   const { settings } = useApp();
   const [showReasoning, setShowReasoning] = useState(false);
@@ -574,20 +909,17 @@ function MessageRow({
   const bubbles = settings.bubbleStyle === "bubbles";
 
   return (
-    <div className={cn("group flex gap-2.5 sm:gap-3", isUser ? "justify-end" : "justify-start")}>
+    <div className={cn("msg-row group flex gap-2.5", isUser ? "justify-end" : "justify-start")}>
       {!isUser && settings.showAvatars && (
-        <div
-          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
-          style={{ background: "linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent-2)))" }}
-        >
-          <Bot className="h-4 w-4 text-white" />
+        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
+          <Bot className="h-4 w-4" />
         </div>
       )}
 
       <div className={cn("flex min-w-0 max-w-[92%] flex-col gap-1", isUser && "items-end")}>
         {!isUser && (modelName || msg.toolRuns?.length) && (
           <div className="flex flex-wrap items-center gap-1.5 px-1">
-            {modelName && <span className="text-[11px] font-medium text-muted">{modelName}</span>}
+            {modelName && <span className="text-[10.5px] font-medium text-muted">{modelName}</span>}
             {msg.toolRuns?.length ? (
               <span className="chip px-1.5 py-0 text-[10px]">
                 <Wrench className="h-2.5 w-2.5" /> {msg.toolRuns.length} tool
@@ -600,10 +932,10 @@ function MessageRow({
         {msg.toolRuns && msg.toolRuns.length > 0 && (
           <div className="w-full space-y-1.5">
             {msg.toolRuns.map((run) => (
-              <details key={run.id} className="glass-soft rounded-xl px-3 py-2 text-[11.5px]">
+              <details key={run.id} className="glass-soft px-2.5 py-1.5 text-[11.5px]">
                 <summary className="flex cursor-pointer list-none items-center gap-2 text-muted">
                   {run.status === "running" ? (
-                    <Loader2 className="h-3 w-3 animate-spin text-accent" />
+                    <Loader2 className="h-3 w-3 spin text-accent" />
                   ) : run.status === "ok" ? (
                     <Check className="h-3 w-3 text-emerald-400" />
                   ) : (
@@ -613,11 +945,11 @@ function MessageRow({
                   <span className="text-muted">on {run.serverName}</span>
                   {run.ms != null && <span className="ml-auto text-muted">{run.ms}ms</span>}
                 </summary>
-                <pre className="scroll-thin mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-muted">
+                <pre className="scroll-thin mt-1.5 max-h-36 overflow-auto whitespace-pre-wrap break-words font-mono text-[10.5px] text-muted">
                   {JSON.stringify(run.args, null, 2)}
                 </pre>
                 {run.result && (
-                  <pre className="scroll-thin mt-1.5 max-h-52 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-ink/80">
+                  <pre className="scroll-thin mt-1 max-h-44 overflow-auto whitespace-pre-wrap break-words font-mono text-[10.5px] text-ink/80">
                     {run.result}
                   </pre>
                 )}
@@ -630,32 +962,53 @@ function MessageRow({
           <div className="w-full">
             <button
               onClick={() => setShowReasoning((v) => !v)}
-              className="chip mb-1 gap-1 text-[10.5px]"
+              className="chip mb-1 gap-1 text-[10px]"
             >
               <ChevronDown className={cn("h-3 w-3 transition-transform", showReasoning && "rotate-180")} />
               reasoning
             </button>
             {showReasoning && (
-              <pre className="scroll-thin max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-black/25 p-3 font-mono text-[11px] leading-relaxed text-muted">
+              <pre className="scroll-thin max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-black/20 p-2.5 font-mono text-[10.5px] leading-relaxed text-muted">
                 {msg.reasoning}
               </pre>
             )}
           </div>
         )}
 
-        {editing !== null ? (
-          <div className="glass w-full rounded-2xl p-2">
+        {isUser && msg.attachments && msg.attachments.length > 0 && (
+          <div className="flex max-w-full flex-wrap justify-end gap-1.5">
+            {msg.attachments.map((a) =>
+              a.kind === "image" && a.dataUrl ? (
+                <img
+                  key={a.id}
+                  src={a.dataUrl}
+                  alt={a.name}
+                  loading="lazy"
+                  decoding="async"
+                  className="max-h-28 max-w-[168px] rounded-lg border border-white/10 object-cover"
+                />
+              ) : (
+                <span key={a.id} className="chip gap-1 text-[10.5px]">
+                  <FileText className="h-3 w-3" /> {a.name}
+                </span>
+              ),
+            )}
+          </div>
+        )}
+
+        {editingValue !== null ? (
+          <div className="glass w-full rounded-xl p-1.5">
             <textarea
-              value={editing}
+              value={editingValue}
               onChange={(e) => onEditChange(e.target.value)}
-              rows={Math.min(12, editing.split("\n").length + 1)}
-              className="scroll-thin w-full resize-none bg-transparent px-2 py-1.5 text-[14px] leading-relaxed text-ink outline-none"
+              rows={Math.min(10, editingValue.split("\n").length + 1)}
+              className="scroll-thin w-full resize-none bg-transparent px-1.5 py-1 text-[14px] leading-relaxed text-ink outline-none"
             />
-            <div className="mt-1 flex justify-end gap-2">
-              <button onClick={onEditCancel} className="btn btn-ghost h-8 px-3 text-[12px]">
+            <div className="mt-1 flex justify-end gap-1.5">
+              <button onClick={onEditCancel} className="btn btn-ghost h-7 px-2.5 text-[11.5px]">
                 Cancel
               </button>
-              <button onClick={onEditSubmit} className="btn btn-accent h-8 px-3 text-[12px]">
+              <button onClick={onEditSubmit} className="btn btn-accent h-7 px-2.5 text-[11.5px]">
                 Save & send
               </button>
             </div>
@@ -663,27 +1016,23 @@ function MessageRow({
         ) : (
           <div
             className={cn(
-              "w-full px-3.5 py-2.5",
+              "w-full px-3 py-2",
               bubbles && isUser
-                ? "rounded-3xl text-white shadow-lg"
+                ? "rounded-2xl bg-accent text-white"
                 : bubbles
-                  ? "glass rounded-3xl"
-                  : "rounded-2xl border-l-2 border-accent/50 bg-white/[0.03] pl-3.5",
+                  ? "glass rounded-2xl"
+                  : "rounded-lg border-l-2 border-accent/50 bg-white/[0.03] pl-2.5",
               msg.error && "border border-red-400/30 bg-red-500/10",
             )}
-            style={
-              bubbles && isUser
-                ? {
-                    background: "linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent-2)))",
-                    boxShadow: "0 14px 34px -18px rgb(var(--accent))",
-                  }
-                : undefined
-            }
           >
             {isUser ? (
-              <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed">{msg.content}</p>
+              <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed">
+                {msg.content || (msg.attachments?.length ? "" : "…")}
+              </p>
             ) : msg.content ? (
-              <Markdown text={msg.content} />
+              <div className={cn(isStreaming && "stream-caret")}>
+                <Markdown text={msg.content} />
+              </div>
             ) : (
               <span className="typing inline-flex items-center py-1">
                 <span />
@@ -698,37 +1047,37 @@ function MessageRow({
           {settings.showTimestamps && (
             <span className="mr-1 text-[10px] text-muted">{fmtTime(msg.createdAt)}</span>
           )}
-          {msg.stopped && <span className="mr-1 text-[10px] text-amber-400">stopped</span>}
+          {msg.stopped && <span className="mr-1 text-[10px] text-amber-500">stopped</span>}
           {settings.showUsage && msg.usage?.completion != null && (
             <span className="mr-1 text-[10px] text-muted">{msg.usage.completion} tok</span>
           )}
           {isUser && (
-            <IconButton title="Edit & resend" onClick={onEditStart}>
+            <IconButton title="Edit & resend" onClick={() => onEditStart(msg.id)}>
               <Pencil className="h-3.5 w-3.5" />
             </IconButton>
           )}
-          <IconButton title="Copy" onClick={onCopy}>
+          <IconButton title="Copy" onClick={() => onCopy(msg.id)}>
             <Copy className="h-3.5 w-3.5" />
           </IconButton>
           {!isUser && !isStreaming && (
-            <IconButton title="Regenerate" onClick={onRegenerate}>
+            <IconButton title="Regenerate" onClick={() => onRegenerate(msg.id)}>
               <RefreshCw className="h-3.5 w-3.5" />
             </IconButton>
           )}
-          <IconButton title="Delete message" onClick={onDelete} className="hover:text-red-400">
+          <IconButton title="Delete" onClick={() => onDelete(msg.id)} className="hover:text-red-400">
             <Trash2 className="h-3.5 w-3.5" />
           </IconButton>
         </div>
       </div>
 
       {isUser && settings.showAvatars && (
-        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/8">
-          <User className="h-4 w-4 text-muted" />
+        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/8 text-muted">
+          <User className="h-4 w-4" />
         </div>
       )}
     </div>
   );
-}
+});
 
 function safeJson(text: string): any {
   try {

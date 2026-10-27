@@ -102,7 +102,7 @@ export function Sidebar({
           {open && (
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-semibold leading-tight text-ink">Sarvam Studio</p>
-              <p className="truncate text-[10.5px] text-muted">Multi-model · MCP · Glass UI</p>
+              <p className="truncate text-[10.5px] text-muted">Multi-model · MCP · files</p>
             </div>
           )}
           <IconButton title={open ? "Collapse sidebar" : "Expand sidebar"} onClick={onToggle}>

@@ -1,6 +1,6 @@
 # Android app (APK)
 
-`SarvamStudio-2.0.apk` in the project root is this web app wrapped in a native WebView shell.
+`SarvamStudio-3.0.apk` in the project root is this web app wrapped in a native WebView shell.
 Same UI, same models, same MCP support — installed like any other app.
 
 ```
@@ -19,7 +19,7 @@ build-apk.sh                 rebuild without Gradle
 Copy the APK to the phone and open it (allow “install unknown apps” for your file manager), or:
 
 ```
-adb install -r SarvamStudio-2.0.apk
+adb install -r SarvamStudio-3.0.apk
 ```
 
 Android may warn that the app is from an unknown developer — it is signed with a self-signed key,

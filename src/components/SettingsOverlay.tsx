@@ -64,7 +64,7 @@ export function SettingsOverlay({
         open ? "opacity-100" : "pointer-events-none opacity-0",
       )}
     >
-      <div className="absolute inset-0 bg-black/55 backdrop-blur-md" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <div className="relative mx-auto flex h-full max-w-6xl flex-col p-2 sm:p-5">
         <div className="glass-hi flex min-h-0 flex-1 flex-col overflow-hidden rounded-glass-lg">
           {/* header */}

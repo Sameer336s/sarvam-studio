@@ -1,9 +1,9 @@
 {
   "name": "sarvam-studio",
   "private": true,
-  "version": "2.0.0",
+  "version": "3.0.0",
   "type": "module",
-  "description": "Glass-morphism AI chat studio for Sarvam AI, OpenAI, Anthropic, Google Gemini and any OpenAI-compatible endpoint \u2014 MCP tools, editable model catalogue, encrypted API keys that survive a restart.",
+  "description": "Fast, flat, multi-model AI chat app for Sarvam AI, OpenAI, Anthropic, Gemini and any OpenAI-compatible endpoint \u2014 image/file attachments, MCP tools, free open-source model presets, encrypted keys that survive a restart.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -27,40 +27,13 @@
     "vite": "^5.4.11"
   },
   "keywords": [
-    "sarvam",
-    "sarvam-ai",
-    "llm",
-    "ai-chat",
-    "mcp",
-    "model-context-protocol",
-    "openai",
-    "anthropic",
-    "claude",
-    "gemini",
-    "react",
-    "typescript",
-    "vite",
-    "tailwindcss",
-    "glassmorphism",
-    "android",
-    "apk",
-    "ollama",
-    "openrouter"
-  ],
-  "license": "MIT",
-  "author": {
-    "name": "Samir Sayyad",
-    "url": "https://github.com/Sameer336s"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Sameer336s/sarvam-studio.git"
-  },
-  "bugs": {
-    "url": "https://github.com/Sameer336s/sarvam-studio/issues"
-  },
-  "homepage": "https://github.com/Sameer336s/sarvam-studio#readme",
-  "engines": {
-    "node": ">=18"
-  }
+    "image-generation",
+    "file-upload",
+    "vision",
+    "free-models",
+    "local-llm",
+    "llama.cpp",
+    "lm-studio",
+    "groq"
+  ]
 }

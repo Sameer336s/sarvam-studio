@@ -12,6 +12,6 @@ coverage
 tsconfig.tsbuildinfo
 android/build/
 *.apk
-!SarvamStudio-2.0.apk
+!SarvamStudio-3.0.apk
 hs_err_pid*.log
 replay_pid*.log

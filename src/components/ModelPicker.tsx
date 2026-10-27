@@ -80,7 +80,7 @@ export function ModelPicker({
           className="h-2 w-2 rounded-full"
           style={{ background: PROVIDERS[current?.provider ?? "sarvam"].color }}
         />
-        <span className="max-w-[150px] truncate font-medium">{current?.name ?? "Select model"}</span>
+        <span className="max-w-[170px] truncate font-medium">{current?.name ?? "Select model"}</span>
         {current?.status === "preview" && <span className="chip px-1.5 py-0">preview</span>}
         <ChevronDown className="h-3.5 w-3.5 text-muted" />
       </button>

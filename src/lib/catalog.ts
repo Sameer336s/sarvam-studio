@@ -471,3 +471,222 @@ export const CAPABILITIES = [
 ];
 
 export const LANGUAGES_HINT = ALL_INDIAN;
+
+/* ==================================================================
+   Free & open-source setup presets.
+
+   One click creates a custom provider (endpoint + auth header) and adds
+   its models to the catalogue. Local servers need no key at all; hosted
+   free tiers need a free key. Model IDs on hosted gateways rotate often —
+   every provider card has a "list models" button that pulls the live IDs
+   for your key, which is the reliable way to see what you actually have.
+   ================================================================== */
+
+export type FreePreset = {
+  id: string;
+  name: string;
+  short: string;
+  endpoint: string;
+  modelsEndpoint: string;
+  authHeader: string;
+  authPrefix: string;
+  /** Hosted gateways need a key; local servers do not. */
+  needsKey: boolean;
+  /** true for servers running on the user's own machine */
+  local: boolean;
+  note: string;
+  keysUrl?: string;
+  models: { id: string; label: string; contextWindow?: number; maxTokens?: number; vision?: boolean }[];
+};
+
+export const FREE_PRESETS: FreePreset[] = [
+  {
+    id: "ollama",
+    name: "Ollama",
+    short: "Ollama",
+    endpoint: "http://localhost:11434/v1/chat/completions",
+    modelsEndpoint: "http://localhost:11434/v1/models",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    needsKey: false,
+    local: true,
+    note: "Runs models on your own machine. Install Ollama, `ollama pull llama3.2`, then use the ↻ button to list what you have.",
+    models: [
+      { id: "llama3.2", label: "Llama 3.2 3B", contextWindow: 131072 },
+      { id: "qwen2.5", label: "Qwen 2.5 7B", contextWindow: 32768 },
+      { id: "deepseek-r1", label: "DeepSeek R1 (reasoning)", contextWindow: 131072 },
+      { id: "gemma3", label: "Gemma 3", contextWindow: 131072, vision: true },
+      { id: "phi4", label: "Phi-4", contextWindow: 16384 },
+      { id: "llava", label: "LLaVA (vision)", contextWindow: 4096, vision: true },
+    ],
+  },
+  {
+    id: "lmstudio",
+    name: "LM Studio",
+    short: "LM Studio",
+    endpoint: "http://localhost:1234/v1/chat/completions",
+    modelsEndpoint: "http://localhost:1234/v1/models",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    needsKey: false,
+    local: true,
+    note: "Desktop app with a built-in OpenAI-compatible server. Start the server (Developer tab) and press ↻ to import the models you downloaded.",
+    models: [],
+  },
+  {
+    id: "llamacpp",
+    name: "llama.cpp server",
+    short: "llama.cpp",
+    endpoint: "http://localhost:8080/v1/chat/completions",
+    modelsEndpoint: "http://localhost:8080/v1/models",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    needsKey: false,
+    local: true,
+    note: "`llama-server -m model.gguf --port 8080` exposes an OpenAI-compatible API. Fastest path to a fully offline chat.",
+    models: [],
+  },
+  {
+    id: "vllm",
+    name: "vLLM / SGLang",
+    short: "vLLM",
+    endpoint: "http://localhost:8000/v1/chat/completions",
+    modelsEndpoint: "http://localhost:8000/v1/models",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    needsKey: false,
+    local: true,
+    note: "Self-hosted GPU serving. Point at your vLLM or SGLang server; press ↻ to import the served model IDs.",
+    models: [],
+  },
+  {
+    id: "openrouter-free",
+    name: "OpenRouter (free models)",
+    short: "OpenRouter",
+    endpoint: "https://openrouter.ai/api/v1/chat/completions",
+    modelsEndpoint: "https://openrouter.ai/api/v1/models",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    needsKey: true,
+    local: false,
+    keysUrl: "https://openrouter.ai/keys",
+    note: "Free key, no card. IDs ending in :free cost nothing but are capped (50 requests/day under $10 lifetime spend, 1000 above). `openrouter/free` auto-picks an available free model.",
+    models: [
+      { id: "openrouter/free", label: "Free router (auto-picks)", contextWindow: 131072 },
+      { id: "nvidia/nemotron-3-ultra-550b-a55b:free", label: "Nemotron 3 Ultra", contextWindow: 1000000 },
+      { id: "nvidia/nemotron-3.5-lightning:free", label: "Nemotron 3.5 Lightning", contextWindow: 1000000 },
+      { id: "google/gemma-4-31b-it:free", label: "Gemma 4 31B", contextWindow: 262144, vision: true },
+      { id: "qwen/qwen3.8-27b:free", label: "Qwen 3.8 27B", contextWindow: 262144, vision: true },
+      { id: "poolside/laguna-s-2.1:free", label: "Laguna S 2.1 (coding)", contextWindow: 262144 },
+    ],
+  },
+  {
+    id: "groq",
+    name: "Groq (free tier)",
+    short: "Groq",
+    endpoint: "https://api.groq.com/openai/v1/chat/completions",
+    modelsEndpoint: "https://api.groq.com/openai/v1/models",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    needsKey: true,
+    local: false,
+    keysUrl: "https://console.groq.com/keys",
+    note: "Free key, extremely fast inference. The free tier currently serves the open-weight models below (30 req/min, 1000/day).",
+    models: [
+      { id: "openai/gpt-oss-120b", label: "GPT-OSS 120B", contextWindow: 131072 },
+      { id: "openai/gpt-oss-20b", label: "GPT-OSS 20B", contextWindow: 131072 },
+      { id: "qwen/qwen3.8-27b", label: "Qwen 3.8 27B", contextWindow: 131072, vision: true },
+    ],
+  },
+  {
+    id: "huggingface",
+    name: "Hugging Face Inference",
+    short: "HF",
+    endpoint: "https://router.huggingface.co/v1/chat/completions",
+    modelsEndpoint: "https://router.huggingface.co/v1/models",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    needsKey: true,
+    local: false,
+    keysUrl: "https://huggingface.co/settings/tokens",
+    note: "Free monthly inference credits with a read token. Hundreds of open-weight models — press ↻ to list the ones your token can call.",
+    models: [],
+  },
+  {
+    id: "together",
+    name: "Together AI",
+    short: "Together",
+    endpoint: "https://api.together.xyz/v1/chat/completions",
+    modelsEndpoint: "https://api.together.xyz/v1/models",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    needsKey: true,
+    local: false,
+    keysUrl: "https://api.together.ai/settings/api-keys",
+    note: "Open-weight models hosted at scale; has a free starter tier. Press ↻ to import the current model IDs.",
+    models: [],
+  },
+  {
+    id: "deepseek",
+    name: "DeepSeek",
+    short: "DeepSeek",
+    endpoint: "https://api.deepseek.com/v1/chat/completions",
+    modelsEndpoint: "https://api.deepseek.com/models",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    needsKey: true,
+    local: false,
+    keysUrl: "https://platform.deepseek.com/api_keys",
+    note: "Very cheap open-weight models, including a reasoning model. Paid, but small credit goes a long way.",
+    models: [
+      { id: "deepseek-chat", label: "DeepSeek Chat", contextWindow: 131072 },
+      { id: "deepseek-reasoner", label: "DeepSeek Reasoner", contextWindow: 131072 },
+    ],
+  },
+  {
+    id: "mistral",
+    name: "Mistral",
+    short: "Mistral",
+    endpoint: "https://api.mistral.ai/v1/chat/completions",
+    modelsEndpoint: "https://api.mistral.ai/v1/models",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    needsKey: true,
+    local: false,
+    keysUrl: "https://console.mistral.ai/api-keys",
+    note: "Free experiment tier. Open-weight Mistral and Codestral models.",
+    models: [
+      { id: "open-mistral-nemo", label: "Mistral Nemo", contextWindow: 131072 },
+      { id: "mistral-small-latest", label: "Mistral Small", contextWindow: 131072 },
+      { id: "codestral-latest", label: "Codestral (code)", contextWindow: 262144 },
+    ],
+  },
+  {
+    id: "cerebras",
+    name: "Cerebras",
+    short: "Cerebras",
+    endpoint: "https://api.cerebras.ai/v1/chat/completions",
+    modelsEndpoint: "https://api.cerebras.ai/v1/models",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    needsKey: true,
+    local: false,
+    keysUrl: "https://cloud.cerebras.ai",
+    note: "Free tier with very high tokens/sec on open-weight models. Press ↻ to list what your key can use.",
+    models: [],
+  },
+  {
+    id: "github-models",
+    name: "GitHub Models",
+    short: "GitHub",
+    endpoint: "https://models.github.ai/inference/chat/completions",
+    modelsEndpoint: "https://models.github.ai/catalog/models",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    needsKey: true,
+    local: false,
+    keysUrl: "https://github.com/settings/tokens",
+    note: "Included with a GitHub account (PAT with models:read). Rate-limited but genuinely free.",
+    models: [],
+  },
+];

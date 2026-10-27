@@ -5,10 +5,9 @@ import { Card, Field, Select, Slider, Switch } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
 const BGS = [
-  { id: "aurora", label: "Aurora" },
-  { id: "mesh", label: "Mesh" },
-  { id: "grid", label: "Grid" },
   { id: "plain", label: "Plain" },
+  { id: "mesh", label: "Glow" },
+  { id: "grid", label: "Grid" },
 ] as const;
 
 export function AppearancePanel() {
@@ -45,7 +44,7 @@ export function AppearancePanel() {
 
         <div className="mt-4">
           <label className="label">Background</label>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {BGS.map((b) => (
               <button
                 key={b.id}
@@ -119,42 +118,37 @@ export function AppearancePanel() {
         </div>
       </Card>
 
-      <Card title="Glass & shape" subtitle="Frosted-glass intensity, corner radius and blur.">
+      <Card
+        title="Surface & shape"
+        subtitle="Flat surfaces keep scrolling smooth on phones — no blur layers to composite."
+      >
         <Slider
-          label="Blur"
-          value={settings.glassBlur}
-          min={0}
-          max={48}
-          onChange={(v) => patchSettings({ glassBlur: v })}
-          suffix="px"
-        />
-        <Slider
-          label="Surface opacity"
-          value={Math.round(settings.glassAlpha * 100)}
-          min={0}
-          max={30}
-          onChange={(v) => patchSettings({ glassAlpha: v / 100 })}
+          label="Surface contrast"
+          value={Math.round(settings.surfaceMix * 100)}
+          min={40}
+          max={100}
+          onChange={(v) => patchSettings({ surfaceMix: v / 100 })}
           suffix="%"
         />
         <Slider
-          label="Border light"
-          value={Math.round(settings.glassBorder * 100)}
+          label="Border strength"
+          value={Math.round(settings.borderStrength * 100)}
           min={0}
-          max={60}
-          onChange={(v) => patchSettings({ glassBorder: v / 100 })}
+          max={40}
+          onChange={(v) => patchSettings({ borderStrength: v / 100 })}
           suffix="%"
         />
         <Slider
           label="Corner radius"
           value={settings.radius}
-          min={4}
-          max={32}
+          min={2}
+          max={24}
           onChange={(v) => patchSettings({ radius: v })}
           suffix="px"
         />
         <Switch
           label="Animations"
-          hint="Background drift, message rise-in, hover lifts."
+          hint="Message fade-in and typing dots. Off = the fastest possible rendering."
           checked={settings.animations}
           onChange={(v) => patchSettings({ animations: v })}
         />

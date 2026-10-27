@@ -12,8 +12,10 @@ import {
   ShieldAlert,
   Trash2,
   X,
+  Download,
+  Cpu,
 } from "lucide-react";
-import { PROVIDERS, PROVIDER_ORDER, type ProviderId } from "@/lib/catalog";
+import { FREE_PRESETS, PROVIDERS, PROVIDER_ORDER, type FreePreset, type ProviderId } from "@/lib/catalog";
 import { useApp } from "@/lib/store";
 import { validateKey, fetchLiveModels, ProviderError } from "@/lib/api";
 import { Button, Card, Field, IconButton, Input, Switch } from "@/components/ui";
@@ -67,6 +69,8 @@ export function ProvidersPanel() {
 
   return (
     <div className="space-y-4">
+      <FreeProviders />
+
       <Card
         title="Key storage"
         subtitle={
@@ -460,5 +464,135 @@ function CustomKeyRow({
         <Trash2 className="h-3.5 w-3.5" />
       </Button>
     </div>
+  );
+}
+
+
+/* --------------------------------------------------- free / open source */
+
+function FreeProviders() {
+  const store = useApp();
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const add = (p: FreePreset) => {
+    setBusy(p.id);
+    const existing = store.customProviders.find((c) => c.presetId === p.id);
+    const id = existing?.id ?? crypto.randomUUID();
+    if (!existing) {
+      store.addCustomProvider({
+        id,
+        name: p.name,
+        endpoint: p.endpoint,
+        modelsEndpoint: p.modelsEndpoint,
+        authHeader: p.authHeader,
+        authPrefix: p.authPrefix,
+        presetId: p.id,
+      });
+    }
+    let added = 0;
+    for (const m of p.models) {
+      if (store.models.some((x) => x.id === m.id && x.providerRef === id)) continue;
+      store.addModel({
+        id: m.id,
+        name: m.label,
+        provider: "custom",
+        providerRef: id,
+        description: `${p.name}${p.local ? " — runs on your machine" : ""}`,
+        contextWindow: m.contextWindow ?? 131072,
+        maxTokens: m.maxTokens ?? 8192,
+        capabilities: m.vision ? ["chat", "vision", "tools"] : ["chat", "tools"],
+        status: "active",
+      });
+      added++;
+    }
+    setBusy(null);
+    toast(
+      existing
+        ? `${p.name} already added${added ? `, +${added} models` : ""}`
+        : `${p.name} added${added ? ` with ${added} model${added === 1 ? "" : "s"}` : ""}${
+            p.needsKey ? " — add its key below" : ""
+          }`,
+      "ok",
+    );
+  };
+
+  return (
+    <Card
+      title="Free & open source"
+      subtitle="One click adds the endpoint and its models. Local servers need no key at all."
+    >
+      <div className="grid gap-2 sm:grid-cols-2">
+        {FREE_PRESETS.map((p) => {
+          const added = store.customProviders.some((c) => c.presetId === p.id);
+          return (
+            <div
+              key={p.id}
+              className={cn(
+                "flex flex-col gap-1.5 rounded-xl border p-2.5",
+                added ? "border-emerald-400/30 bg-emerald-500/[0.06]" : "border-white/10 bg-white/[0.02]",
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 text-[12.5px] font-semibold text-ink">
+                    <Cpu className="h-3.5 w-3.5 text-muted" />
+                    {p.name}
+                  </p>
+                  <p className="mt-0.5 font-mono text-[9.5px] leading-tight text-muted/80">
+                    {p.endpoint.replace(/^https?:\/\//, "")}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant={added ? "ghost" : "accent"}
+                  disabled={busy === p.id}
+                  onClick={() => add(p)}
+                  className="shrink-0"
+                >
+                  {busy === p.id ? (
+                    <Loader2 className="h-3.5 w-3.5 spin" />
+                  ) : added ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5" />
+                  )}
+                  {added ? "Added" : "Add"}
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                <span
+                  className={cn(
+                    "chip px-1.5 py-0 text-[9.5px]",
+                    p.local
+                      ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+                      : "border-sky-400/30 bg-sky-500/10 text-sky-300",
+                  )}
+                >
+                  {p.local ? "local · no key" : "free key"}
+                </span>
+                {p.models.length > 0 && (
+                  <span className="chip px-1.5 py-0 text-[9.5px]">{p.models.length} models</span>
+                )}
+              </div>
+              <p className="text-[10.5px] leading-relaxed text-muted">{p.note}</p>
+              {p.keysUrl && (
+                <a
+                  href={p.keysUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-[10.5px] text-accent hover:underline"
+                >
+                  Get a free key <ExternalLink className="h-2.5 w-2.5" />
+                </a>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[10.5px] leading-relaxed text-muted">
+        After adding, press ↻ on the provider card below to import the live model list for your key —
+        hosted gateways rotate model IDs often.
+      </p>
+    </Card>
   );
 }

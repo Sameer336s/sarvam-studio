@@ -1,5 +1,6 @@
 import type { ModelDef, ProviderId } from "@/lib/catalog";
 import { PROVIDERS } from "@/lib/catalog";
+import type { Attachment, ModelParams } from "@/lib/types";
 
 /* ------------------------------------------------------------------ types */
 
@@ -54,11 +55,17 @@ export type CustomEndpoint = {
   authPrefix: string;
 };
 
+export type RequestOpts = {
+  params?: Partial<ModelParams>;
+  tools?: ToolSpec[];
+  signal?: AbortSignal;
+};
+
 export function classify(status: number, body: string): ProviderError {
   const snippet = (body || "").slice(0, 300);
   if (status === 401 || status === 403)
     return new ProviderError(
-      "Invalid or unauthorised API key. Open Settings → Providers and check the key for this provider.",
+      "Invalid or unauthorised API key. Open Settings → API keys and check the key for this provider.",
       status,
       "auth",
     );
@@ -72,10 +79,16 @@ export function classify(status: number, body: string): ProviderError {
       status,
       "not_found",
     );
+  if (status === 413)
+    return new ProviderError("Payload too large — remove an attachment or lower max tokens.", status, "too_large");
   if (status === 429)
     return new ProviderError("Rate limit or quota exceeded. Wait a moment and retry.", status, "rate_limit");
   if (status === 400 || status === 422)
-    return new ProviderError(`Bad request: ${snippet || "the provider rejected the parameters."}`, status, "bad_request");
+    return new ProviderError(
+      `Bad request: ${snippet || "the provider rejected the parameters."}`,
+      status,
+      "bad_request",
+    );
   if (status >= 500)
     return new ProviderError("The provider is temporarily unavailable. Try again shortly.", status, "server");
   return new ProviderError(snippet || `Request failed (${status}).`, status, "unknown");
@@ -88,7 +101,6 @@ function authHeaders(provider: ProviderId, apiKey: string, custom?: CustomEndpoi
   if (provider === "anthropic") {
     h["x-api-key"] = apiKey;
     h["anthropic-version"] = "2026-10-21";
-    // lets the browser talk to api.anthropic.com without a proxy
     h["anthropic-dangerous-direct-browser-access"] = "true";
   } else if (provider === "sarvam") {
     h["api-subscription-key"] = apiKey;
@@ -103,15 +115,10 @@ function authHeaders(provider: ProviderId, apiKey: string, custom?: CustomEndpoi
   return h;
 }
 
-export function resolveTarget(
-  model: ModelDef,
-  apiKey: string,
-  custom?: CustomEndpoint,
-): Target {
+export function resolveTarget(model: ModelDef, apiKey: string, custom?: CustomEndpoint): Target {
   const provider = model.provider;
   const def = PROVIDERS[provider];
-  const endpoint =
-    model.endpoint || (provider === "custom" ? custom?.endpoint ?? "" : def.endpoint);
+  const endpoint = model.endpoint || (provider === "custom" ? custom?.endpoint ?? "" : def.endpoint);
   return {
     endpoint,
     api: provider === "anthropic" ? "anthropic" : "openai",
@@ -120,27 +127,110 @@ export function resolveTarget(
   };
 }
 
+/* ------------------------------------------------------- attachments -> parts */
+
+const IMAGE_RE = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i;
+
+export function splitDataUrl(dataUrl: string): { mediaType: string; data: string } | null {
+  const m = dataUrl.match(IMAGE_RE);
+  if (!m) return null;
+  return { mediaType: m[1], data: m[2] };
+}
+
+function textFileBlock(a: Attachment) {
+  const body = a.text ?? "";
+  const trimmed = body.length > 20000 ? `${body.slice(0, 20000)}\n…(truncated)` : body;
+  return `\n\n--- file: ${a.name} ---\n${trimmed}\n--- end of ${a.name} ---`;
+}
+
+/**
+ * Turns a chat message (text + attachments) into provider-shaped content.
+ * Images go as real image parts; text files are inlined as fenced blocks so
+ * even text-only models can use them.
+ */
+function userContent(msg: { content: string; attachments?: Attachment[] }, api: "openai" | "anthropic") {
+  const atts = msg.attachments ?? [];
+  if (atts.length === 0) return msg.content;
+
+  const images = atts.filter((a) => a.kind === "image" && a.dataUrl);
+  const files = atts.filter((a) => a.kind === "text" && a.text);
+  const text = msg.content + files.map(textFileBlock).join("");
+
+  if (images.length === 0) return text;
+
+  if (api === "anthropic") {
+    const parts: any[] = images
+      .map((a) => {
+        const split = splitDataUrl(a.dataUrl!);
+        if (!split) return null;
+        return {
+          type: "image",
+          source: { type: "base64", media_type: split.mediaType, data: split.data },
+        };
+      })
+      .filter(Boolean);
+    if (text.trim()) parts.push({ type: "text", text });
+    return parts;
+  }
+
+  const parts: any[] = [];
+  if (text.trim()) parts.push({ type: "text", text });
+  for (const a of images) {
+    parts.push({ type: "image_url", image_url: { url: a.dataUrl } });
+  }
+  return parts;
+}
+
+/** Build the wire messages for a whole conversation. */
+export function toApiMessages(
+  msgs: { role: "system" | "user" | "assistant"; content: string; attachments?: Attachment[] }[],
+  api: "openai" | "anthropic",
+): ApiMessage[] {
+  return msgs.map((m) => ({
+    role: m.role,
+    content: m.role === "user" ? userContent(m, api) : m.content,
+  }));
+}
+
 /* ------------------------------------------------------------- request body */
+
+function reasoningEffortFor(provider: ProviderId, effort?: ModelParams["reasoningEffort"]) {
+  if (!effort || effort === "auto") return undefined;
+  // Sarvam's v2 reasoning models document low / high / max only.
+  if (provider === "sarvam") return effort === "high" ? "max" : effort === "medium" ? "high" : "low";
+  return effort;
+}
 
 function openAiBody(
   model: ModelDef,
   messages: ApiMessage[],
   stream: boolean,
-  opts: { temperature?: number; topP?: number; maxTokens?: number; tools?: ToolSpec[] },
+  opts: RequestOpts,
 ) {
-  const body: Record<string, unknown> = {
-    model: model.id,
-    messages,
-    stream,
-  };
-  if (typeof opts.temperature === "number") body.temperature = opts.temperature;
-  if (typeof opts.topP === "number") body.top_p = opts.topP;
-  const maxOut = Math.min(opts.maxTokens || model.maxTokens, model.maxTokens);
+  const p = opts.params ?? {};
+  const body: Record<string, unknown> = { model: model.id, messages, stream };
+
+  if (typeof p.temperature === "number") body.temperature = p.temperature;
+  if (typeof p.topP === "number") body.top_p = p.topP;
+  if (typeof p.topK === "number" && p.topK > 0) body.top_k = p.topK;
+  if (typeof p.presencePenalty === "number" && p.presencePenalty !== 0)
+    body.presence_penalty = p.presencePenalty;
+  if (typeof p.frequencyPenalty === "number" && p.frequencyPenalty !== 0)
+    body.frequency_penalty = p.frequencyPenalty;
+  if (typeof p.seed === "number") body.seed = p.seed;
+  if (Array.isArray(p.stop) && p.stop.length) body.stop = p.stop.slice(0, 4);
+  if (p.jsonMode) body.response_format = { type: "json_object" };
+
+  const effort = reasoningEffortFor(model.provider, p.reasoningEffort);
+  if (effort) body.reasoning_effort = effort;
+
+  const maxOut = Math.min(p.maxTokens || model.maxTokens, model.maxTokens);
   if (maxOut) {
-    // OpenAI's newer reasoning models want max_completion_tokens; everyone else uses max_tokens.
+    // OpenAI's reasoning models want max_completion_tokens; everyone else uses max_tokens.
     if (model.provider === "openai") body.max_completion_tokens = maxOut;
     else body.max_tokens = maxOut;
   }
+
   if (opts.tools?.length) {
     body.tools = opts.tools.map((t) => ({
       type: "function",
@@ -156,17 +246,19 @@ function anthropicBody(
   model: ModelDef,
   messages: ApiMessage[],
   stream: boolean,
-  opts: { temperature?: number; topP?: number; maxTokens?: number; tools?: ToolSpec[] },
+  opts: RequestOpts,
 ) {
+  const p = opts.params ?? {};
   const system = messages
     .filter((m) => m.role === "system")
     .map((m) => (typeof m.content === "string" ? m.content : ""))
     .filter(Boolean)
     .join("\n\n");
   const rest = messages.filter((m) => m.role !== "system");
+
   const body: Record<string, unknown> = {
     model: model.id,
-    max_tokens: Math.min(opts.maxTokens || model.maxTokens, model.maxTokens),
+    max_tokens: Math.min(p.maxTokens || model.maxTokens, model.maxTokens),
     messages: rest.map((m) => {
       if (m.role === "tool") {
         return {
@@ -181,8 +273,10 @@ function anthropicBody(
     stream,
   };
   if (system) body.system = system;
-  if (typeof opts.temperature === "number") body.temperature = opts.temperature;
-  if (typeof opts.topP === "number") body.top_p = opts.topP;
+  if (typeof p.temperature === "number") body.temperature = p.temperature;
+  if (typeof p.topP === "number") body.top_p = p.topP;
+  if (typeof p.topK === "number" && p.topK > 0) body.top_k = p.topK;
+  if (Array.isArray(p.stop) && p.stop.length) body.stop_sequences = p.stop.slice(0, 4);
   if (opts.tools?.length) {
     body.tools = opts.tools.map((t) => ({
       name: t.name,
@@ -240,10 +334,17 @@ async function* readSse(
             yield { usage: { completion: json.usage.output_tokens } };
           }
         } else {
-          const choice = json.choices?.[0];
-          const delta = choice?.delta;
-          if (delta?.content) yield { delta: typeof delta.content === "string" ? delta.content : "" };
-          if (delta?.reasoning_content) yield { reasoning: delta.reasoning_content };
+          const delta = json.choices?.[0]?.delta;
+          if (delta) {
+            if (typeof delta.content === "string" && delta.content) yield { delta: delta.content };
+            else if (Array.isArray(delta.content)) {
+              const text = delta.content
+                .map((c: any) => (c?.type === "text" ? c.text : c?.image_url?.url ? `\n\n![](${c.image_url.url})\n\n` : ""))
+                .join("");
+              if (text) yield { delta: text };
+            }
+            if (delta.reasoning_content) yield { reasoning: delta.reasoning_content };
+          }
           if (json.usage) {
             yield {
               usage: { prompt: json.usage.prompt_tokens, completion: json.usage.completion_tokens },
@@ -270,9 +371,7 @@ export async function streamChat(args: {
   apiKey: string;
   messages: ApiMessage[];
   custom?: CustomEndpoint;
-  temperature?: number;
-  topP?: number;
-  maxTokens?: number;
+  params?: Partial<ModelParams>;
   tools?: ToolSpec[];
   signal?: AbortSignal;
 }): Promise<AsyncGenerator<StreamEvent>> {
@@ -281,8 +380,7 @@ export async function streamChat(args: {
   if (!target.endpoint) {
     return (async function* () {
       yield {
-        error:
-          "No endpoint configured for this model. Open Settings → Providers and add an endpoint.",
+        error: "No endpoint configured for this model. Open Settings → API keys and add an endpoint.",
       };
     })();
   }
@@ -322,15 +420,13 @@ export async function streamChat(args: {
   return readSse(res, target.api, signal);
 }
 
-/** One non-streaming turn — used for tool planning. */
+/** One non-streaming turn — used for tool planning and for non-stream mode. */
 export async function completeOnce(args: {
   model: ModelDef;
   apiKey: string;
   messages: ApiMessage[];
   custom?: CustomEndpoint;
-  temperature?: number;
-  topP?: number;
-  maxTokens?: number;
+  params?: Partial<ModelParams>;
   tools?: ToolSpec[];
   signal?: AbortSignal;
 }): Promise<{ text: string; toolCalls: ToolCall[]; raw?: any }> {
@@ -360,19 +456,41 @@ export async function completeOnce(args: {
       .filter((b: any) => b.type === "text")
       .map((b: any) => b.text)
       .join("");
+    const images = blocks
+      .filter((b: any) => b.type === "image" && b.source?.data)
+      .map((b: any) => `\n\n![](data:${b.source.media_type};base64,${b.source.data})\n\n`)
+      .join("");
     const toolCalls: ToolCall[] = blocks
       .filter((b: any) => b.type === "tool_use")
       .map((b: any) => ({ id: b.id, name: b.name, arguments: JSON.stringify(b.input ?? {}) }));
-    return { text, toolCalls, raw: json };
+    return { text: text + images, toolCalls, raw: json };
   }
 
   const msg = json.choices?.[0]?.message ?? {};
+  let content = "";
+  if (typeof msg.content === "string") content = msg.content;
+  else if (Array.isArray(msg.content)) {
+    content = msg.content
+      .map((c: any) =>
+        c?.type === "text" ? c.text : c?.image_url?.url ? `\n\n![](${c.image_url.url})\n\n` : "",
+      )
+      .join("");
+  }
+  // some image models put the picture in `images[]`
+  if (Array.isArray(msg.images)) {
+    content += msg.images
+      .map((img: any) => {
+        const url = img?.image_url?.url ?? img?.url;
+        return url ? `\n\n![](${url})\n\n` : "";
+      })
+      .join("");
+  }
   const toolCalls: ToolCall[] = (msg.tool_calls ?? []).map((tc: any) => ({
     id: tc.id,
     name: tc.function?.name,
     arguments: tc.function?.arguments ?? "{}",
   }));
-  return { text: msg.content ?? "", toolCalls, raw: json };
+  return { text: content, toolCalls, raw: json };
 }
 
 /* -------------------------------------------------------------- validate */
@@ -382,12 +500,10 @@ export async function validateKey(
   apiKey: string,
   custom?: CustomEndpoint,
 ): Promise<{ ok: boolean; message: string }> {
-  if (!apiKey.trim()) return { ok: false, message: "Enter a key first." };
+  if (!apiKey.trim() && provider !== "custom")
+    return { ok: false, message: "Enter a key first." };
   const def = PROVIDERS[provider];
-  const modelsUrl =
-    provider === "custom"
-      ? custom?.modelsEndpoint?.trim() || ""
-      : def.modelsEndpoint || "";
+  const modelsUrl = provider === "custom" ? custom?.modelsEndpoint?.trim() || "" : def.modelsEndpoint || "";
 
   // Preferred: a cheap authenticated GET /models — validates without spending tokens.
   if (modelsUrl) {
@@ -395,7 +511,7 @@ export async function validateKey(
       const res = await fetch(modelsUrl, { headers: authHeaders(provider, apiKey, custom) });
       if (res.ok) {
         const json = await res.json().catch(() => null);
-        const count = Array.isArray(json?.data) ? json.data.length : undefined;
+        const count = Array.isArray(json?.data) ? json.data.length : Array.isArray(json?.models) ? json.models.length : undefined;
         return {
           ok: true,
           message: count ? `Key valid — ${count} models available.` : "Key validated successfully.",
@@ -405,15 +521,23 @@ export async function validateKey(
         const text = await res.text().catch(() => "");
         return { ok: false, message: classify(res.status, text).message };
       }
-      // 404/405: endpoint has no model listing — fall through to a tiny chat ping.
     } catch {
-      // network/CORS — fall through
+      // network/CORS — fall through to a ping
     }
   }
 
   // Fallback: 1-token chat ping.
   const probe: ModelDef = {
-    id: provider === "openai" ? "gpt-6-luna" : provider === "google" ? "gemini-3.5-flash-lite" : provider === "anthropic" ? "claude-haiku-5-5" : "sarvam-105b",
+    id:
+      provider === "openai"
+        ? "gpt-6-luna"
+        : provider === "google"
+          ? "gemini-3.5-flash-lite"
+          : provider === "anthropic"
+            ? "claude-haiku-5-5"
+            : provider === "custom"
+              ? ""
+              : "sarvam-105b",
     name: "probe",
     provider,
     description: "",
@@ -423,13 +547,14 @@ export async function validateKey(
     status: "active",
     endpoint: provider === "custom" ? custom?.endpoint : undefined,
   };
+  if (!probe.id) return { ok: true, message: "No key needed for this endpoint." };
   try {
     await completeOnce({
       model: probe,
       apiKey,
       messages: [{ role: "user", content: "ping" }],
       custom,
-      maxTokens: 1,
+      params: { maxTokens: 1 },
     });
     return { ok: true, message: "Key validated successfully." };
   } catch (e) {
@@ -460,7 +585,7 @@ export async function fetchLiveModels(
   const list: string[] = Array.isArray(json?.data)
     ? json.data.map((m: any) => m.id).filter(Boolean)
     : Array.isArray(json?.models)
-      ? json.models.map((m: any) => (m.name || m.id || "").replace(/^models\//, ""))
+      ? json.models.map((m: any) => (m.name || m.id || "").replace(/^models\//, "")).filter(Boolean)
       : [];
   return [...new Set(list)].sort();
 }

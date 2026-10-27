@@ -11,12 +11,14 @@ import {
 import { DEFAULT_MODELS, PROVIDERS, type ModelDef, type ProviderId } from "@/lib/catalog";
 import type { McpServer } from "@/lib/mcp";
 import {
+  DEFAULT_PARAMS,
   DEFAULT_SETTINGS,
   type ChatMsg,
   type Conversation,
   type CustomProviderDef,
   type KeyInfo,
   type KeyStatus,
+  type ModelParams,
   type Settings,
 } from "@/lib/types";
 import { loadSecret, removeSecret, saveSecret, wipeAllSecrets } from "@/lib/secureStore";
@@ -40,12 +42,38 @@ function read<T>(key: string, fallback: T): T {
   }
 }
 
-function write(key: string, value: unknown) {
+function write(key: string, value: unknown): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch {
-    /* quota */
+    return false;
   }
+}
+
+/**
+ * Chats can carry inline images, and localStorage is only ~5 MB. If a write
+ * fails we shed image payloads (text and structure survive), and as a last
+ * resort keep the newest conversations only. Losing a thumbnail beats losing
+ * the whole history.
+ */
+function persistChats(convs: Conversation[]) {
+  if (write(LS.chats, convs)) return;
+  const slim = convs.map((c) => ({
+    ...c,
+    messages: c.messages.map((m) =>
+      m.attachments?.length
+        ? {
+            ...m,
+            attachments: m.attachments.map((a) =>
+              a.kind === "image" ? { ...a, dataUrl: undefined } : a,
+            ),
+          }
+        : m,
+    ),
+  }));
+  if (write(LS.chats, slim)) return;
+  write(LS.chats, slim.slice(0, 30));
 }
 
 /** Merge stored models with the shipped catalog so app updates add new models. */
@@ -111,6 +139,8 @@ export type Store = {
   deleteMessage: (chatId: string, msgId: string) => void;
   dropMessagesFrom: (chatId: string, msgId: string) => void;
   setChatModel: (chatId: string, modelId: string) => void;
+  setChatParams: (chatId: string, patch: Partial<ModelParams>) => void;
+  clearChatParams: (chatId: string) => void;
 
   toggleModelEnabled: (id: string) => void;
   updateModel: (id: string, patch: Partial<ModelDef>) => void;
@@ -153,19 +183,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
     read<CustomProviderDef[]>(LS.providers, []),
   );
   const [mcpServers, setMcpServers] = useState<McpServer[]>(() => read<McpServer[]>(LS.mcp, []));
-  const [settings, setSettings] = useState<Settings>(() => ({
-    ...DEFAULT_SETTINGS,
-    ...read<Partial<Settings>>(LS.settings, {}),
-  }));
+  const [settings, setSettings] = useState<Settings>(() => {
+    const stored = read<Record<string, unknown>>(LS.settings, {});
+    // v2 kept temperature/topP/maxTokens at the top level; fold them into params.
+    const legacy = stored as { temperature?: number; topP?: number; maxTokens?: number };
+    const params: ModelParams = {
+      ...DEFAULT_PARAMS,
+      ...(typeof legacy.temperature === "number" ? { temperature: legacy.temperature } : {}),
+      ...(typeof legacy.topP === "number" ? { topP: legacy.topP } : {}),
+      ...(typeof legacy.maxTokens === "number" ? { maxTokens: legacy.maxTokens } : {}),
+      ...((stored.params as Partial<ModelParams>) ?? {}),
+    };
+    const merged = { ...DEFAULT_SETTINGS, ...(stored as Partial<Settings>), params };
+    if (!["plain", "mesh", "grid"].includes(merged.bgStyle as string)) merged.bgStyle = "plain";
+    if (!["sans", "serif", "mono"].includes(merged.fontFamily as string)) merged.fontFamily = "sans";
+    if (!["dark", "light", "system"].includes(merged.theme as string)) merged.theme = "dark";
+    delete (merged as Record<string, unknown>).temperature;
+    delete (merged as Record<string, unknown>).topP;
+    delete (merged as Record<string, unknown>).maxTokens;
+    return merged;
+  });
   const [keys, setKeys] = useState<Record<string, KeyInfo>>({});
 
   /* -------------------------------------------------- persistence effects */
-  useEffect(() => write(LS.chats, conversations), [conversations]);
-  useEffect(() => write(LS.models, models), [models]);
-  useEffect(() => write(LS.providers, customProviders), [customProviders]);
-  useEffect(() => write(LS.mcp, mcpServers), [mcpServers]);
-  useEffect(() => write(LS.settings, settings), [settings]);
-  useEffect(() => write(LS.active, activeId), [activeId]);
+  useEffect(() => persistChats(conversations), [conversations]);
+  useEffect(() => {
+    write(LS.models, models);
+  }, [models]);
+  useEffect(() => {
+    write(LS.providers, customProviders);
+  }, [customProviders]);
+  useEffect(() => {
+    write(LS.mcp, mcpServers);
+  }, [mcpServers]);
+  useEffect(() => {
+    write(LS.settings, settings);
+  }, [settings]);
+  useEffect(() => {
+    write(LS.active, activeId);
+  }, [activeId]);
 
   /* ------------------------------------------- load encrypted keys on boot */
   useEffect(() => {
@@ -232,9 +288,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     root.style.setProperty("--accent", hexToRgb(settings.accent));
     root.style.setProperty("--accent-2", hexToRgb(settings.accent2));
-    root.style.setProperty("--glass-blur", `${settings.glassBlur}px`);
-    root.style.setProperty("--glass-alpha", String(settings.glassAlpha));
-    root.style.setProperty("--glass-border", String(settings.glassBorder));
+    root.style.setProperty("--surface-mix", String(settings.surfaceMix));
+    root.style.setProperty("--border-strength", String(settings.borderStrength));
     root.style.setProperty("--radius", `${settings.radius}px`);
     root.style.setProperty("--font-scale", String(settings.fontScale));
     root.style.setProperty("--chat-width", `${settings.chatWidth}rem`);
@@ -378,6 +433,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setChatModel = useCallback((chatId: string, modelId: string) => {
     setConversations((prev) => prev.map((c) => (c.id === chatId ? { ...c, modelId } : c)));
+  }, []);
+
+  const setChatParams = useCallback((chatId: string, patch: Partial<ModelParams>) => {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === chatId ? { ...c, params: { ...c.params, ...patch } } : c)),
+    );
+  }, []);
+
+  const clearChatParams = useCallback((chatId: string) => {
+    setConversations((prev) => prev.map((c) => (c.id === chatId ? { ...c, params: undefined } : c)));
   }, []);
 
   /* ---------------------------------------------------------------- models */
@@ -549,6 +614,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     deleteMessage,
     dropMessagesFrom,
     setChatModel,
+    setChatParams,
+    clearChatParams,
     toggleModelEnabled,
     updateModel,
     deleteModel,

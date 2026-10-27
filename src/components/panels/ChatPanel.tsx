@@ -1,6 +1,6 @@
 import { RotateCcw } from "lucide-react";
 import { useApp } from "@/lib/store";
-import { DEFAULT_SYSTEM_PROMPT } from "@/lib/types";
+import { DEFAULT_PARAMS, DEFAULT_SYSTEM_PROMPT, type ModelParams } from "@/lib/types";
 import { Button, Card, Field, Select, Slider, Switch, Textarea } from "@/components/ui";
 
 const PROMPT_PRESETS: { name: string; value: string }[] = [
@@ -29,6 +29,9 @@ const PROMPT_PRESETS: { name: string; value: string }[] = [
 
 export function ChatPanel() {
   const { settings, patchSettings, visibleModels } = useApp();
+
+  const patchParams = (patch: Partial<ModelParams>) =>
+    patchSettings({ params: { ...settings.params, ...patch } });
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -65,34 +68,115 @@ export function ChatPanel() {
         </div>
       </Card>
 
-      <Card title="Sampling" subtitle="Applies to every new message.">
+      <Card
+        title="Sampling defaults"
+        subtitle="Applies to every new chat. Any chat can override these from the composer's parameters button."
+        actions={
+          <Button size="sm" variant="ghost" onClick={() => patchParams({ ...DEFAULT_PARAMS })}>
+            <RotateCcw className="h-3.5 w-3.5" /> Reset
+          </Button>
+        }
+      >
         <Slider
           label="Temperature"
-          value={settings.temperature}
+          value={settings.params.temperature}
           min={0}
           max={2}
           step={0.05}
-          onChange={(v) => patchSettings({ temperature: v })}
+          onChange={(v) => patchParams({ temperature: v })}
         />
         <Slider
           label="Top-p"
-          value={settings.topP}
+          value={settings.params.topP}
           min={0.1}
           max={1}
           step={0.05}
-          onChange={(v) => patchSettings({ topP: v })}
+          onChange={(v) => patchParams({ topP: v })}
+        />
+        <Slider
+          label="Top-k (0 = off)"
+          value={settings.params.topK ?? 0}
+          min={0}
+          max={100}
+          onChange={(v) => patchParams({ topK: v === 0 ? null : v })}
         />
         <Slider
           label="Max output tokens"
-          value={settings.maxTokens}
+          value={settings.params.maxTokens}
           min={256}
           max={32768}
           step={256}
-          onChange={(v) => patchSettings({ maxTokens: v })}
+          onChange={(v) => patchParams({ maxTokens: v })}
         />
-        <p className="mt-1 text-[11px] leading-relaxed text-muted">
-          Capped per model automatically — if a model's own limit is lower, the lower value is used.
-        </p>
+        <div className="grid grid-cols-2 gap-3 pt-2">
+          <Field label="Presence penalty">
+            <input
+              type="number"
+              step="0.1"
+              min="-2"
+              max="2"
+              value={settings.params.presencePenalty}
+              onChange={(e) => patchParams({ presencePenalty: Number(e.target.value) || 0 })}
+              className="field"
+            />
+          </Field>
+          <Field label="Frequency penalty">
+            <input
+              type="number"
+              step="0.1"
+              min="-2"
+              max="2"
+              value={settings.params.frequencyPenalty}
+              onChange={(e) => patchParams({ frequencyPenalty: Number(e.target.value) || 0 })}
+              className="field"
+            />
+          </Field>
+          <Field label="Seed (blank = random)">
+            <input
+              type="number"
+              value={settings.params.seed ?? ""}
+              placeholder="random"
+              onChange={(e) =>
+                patchParams({ seed: e.target.value === "" ? null : Number(e.target.value) })
+              }
+              className="field"
+            />
+          </Field>
+          <Field label="Reasoning effort">
+            <Select
+              value={settings.params.reasoningEffort}
+              onChange={(v) => patchParams({ reasoningEffort: v })}
+              options={[
+                { value: "auto", label: "Auto (provider default)" },
+                { value: "low", label: "Low" },
+                { value: "medium", label: "Medium" },
+                { value: "high", label: "High" },
+              ]}
+            />
+          </Field>
+        </div>
+        <Field label="Stop sequences (comma separated, max 4)" className="pt-2">
+          <input
+            value={settings.params.stop.join(", ")}
+            onChange={(e) =>
+              patchParams({
+                stop: e.target.value
+                  .split(",")
+                  .map((x) => x.trim())
+                  .filter(Boolean)
+                  .slice(0, 4),
+              })
+            }
+            placeholder="e.g. </answer>"
+            className="field"
+          />
+        </Field>
+        <Switch
+          label="JSON mode"
+          hint="Ask for valid JSON output where the model supports it."
+          checked={settings.params.jsonMode}
+          onChange={(v) => patchParams({ jsonMode: v })}
+        />
       </Card>
 
       <Card title="Behaviour" subtitle="Composer and history handling.">

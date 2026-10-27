@@ -25,7 +25,7 @@ export function Toaster() {
 
   if (!items.length) return null;
   return (
-    <div className="pointer-events-none fixed bottom-5 left-1/2 z-[80] flex w-full max-w-md -translate-x-1/2 flex-col gap-2 px-4">
+    <div className="pointer-events-none fixed bottom-4 right-4 z-[80] flex w-full max-w-[340px] flex-col gap-2 px-0 sm:bottom-5 sm:right-5">
       {items.map((t) => (
         <div
           key={t.id}

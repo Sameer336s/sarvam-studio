@@ -11,6 +11,22 @@ export type ToolRun = {
   ms?: number;
 };
 
+/** A file the user attached to a message. */
+export type Attachment = {
+  id: string;
+  kind: "image" | "text";
+  name: string;
+  mime: string;
+  /** Original size in bytes. */
+  size: number;
+  /** data: URL for images (downscaled). */
+  dataUrl?: string;
+  /** Extracted plain text for text-like files. */
+  text?: string;
+  width?: number;
+  height?: number;
+};
+
 export type ChatMsg = {
   id: string;
   role: "user" | "assistant";
@@ -20,6 +36,7 @@ export type ChatMsg = {
   error?: boolean;
   reasoning?: string;
   toolRuns?: ToolRun[];
+  attachments?: Attachment[];
   usage?: { prompt?: number; completion?: number };
   stopped?: boolean;
 };
@@ -33,6 +50,8 @@ export type Conversation = {
   updatedAt: number;
   pinned?: boolean;
   archived?: boolean;
+  /** Per-chat overrides on top of the global parameter defaults. */
+  params?: Partial<ModelParams>;
 };
 
 export type CustomProviderDef = {
@@ -43,6 +62,8 @@ export type CustomProviderDef = {
   authHeader: string;
   authPrefix: string;
   color?: string;
+  /** Free / open-source preset this provider came from. */
+  presetId?: string;
 };
 
 export type KeyStatus = "none" | "checking" | "valid" | "invalid";
@@ -54,14 +75,40 @@ export type KeyInfo = {
   checkedAt?: number;
 };
 
+/** Everything a model request can be tuned with. */
+export type ModelParams = {
+  temperature: number;
+  topP: number;
+  topK: number | null;
+  maxTokens: number;
+  presencePenalty: number;
+  frequencyPenalty: number;
+  seed: number | null;
+  stop: string[];
+  reasoningEffort: "auto" | "low" | "medium" | "high";
+  jsonMode: boolean;
+};
+
+export const DEFAULT_PARAMS: ModelParams = {
+  temperature: 0.7,
+  topP: 0.95,
+  topK: null,
+  maxTokens: 4096,
+  presencePenalty: 0,
+  frequencyPenalty: 0,
+  seed: null,
+  stop: [],
+  reasoningEffort: "auto",
+  jsonMode: false,
+};
+
 export type Settings = {
   theme: "dark" | "light" | "system";
   accent: string;
   accent2: string;
-  bgStyle: "aurora" | "mesh" | "plain" | "grid";
-  glassBlur: number;
-  glassAlpha: number;
-  glassBorder: number;
+  bgStyle: "plain" | "mesh" | "grid";
+  surfaceMix: number;
+  borderStrength: number;
   radius: number;
   fontFamily: "sans" | "serif" | "mono";
   fontScale: number;
@@ -74,9 +121,7 @@ export type Settings = {
   showUsage: boolean;
 
   systemPrompt: string;
-  temperature: number;
-  topP: number;
-  maxTokens: number;
+  params: ModelParams;
   streaming: boolean;
   sendOnEnter: boolean;
   contextMessages: number;
@@ -91,13 +136,12 @@ export const DEFAULT_SYSTEM_PROMPT =
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: "dark",
-  accent: "#8b5cf6",
-  accent2: "#38bdf8",
-  bgStyle: "aurora",
-  glassBlur: 20,
-  glassAlpha: 0.07,
-  glassBorder: 0.14,
-  radius: 18,
+  accent: "#6366f1",
+  accent2: "#8b5cf6",
+  bgStyle: "plain",
+  surfaceMix: 1,
+  borderStrength: 0.12,
+  radius: 12,
   fontFamily: "sans",
   fontScale: 1,
   density: "comfortable",
@@ -109,9 +153,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showUsage: true,
 
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
-  temperature: 0.7,
-  topP: 0.95,
-  maxTokens: 4096,
+  params: { ...DEFAULT_PARAMS },
   streaming: true,
   sendOnEnter: true,
   contextMessages: 24,
@@ -122,21 +164,21 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export const ACCENT_PRESETS: { name: string; accent: string; accent2: string }[] = [
-  { name: "Violet Sky", accent: "#8b5cf6", accent2: "#38bdf8" },
-  { name: "Saffron", accent: "#f97316", accent2: "#fbbf24" },
-  { name: "Emerald", accent: "#10b981", accent2: "#22d3ee" },
-  { name: "Rose", accent: "#f43f5e", accent2: "#fb7185" },
-  { name: "Indigo", accent: "#6366f1", accent2: "#a78bfa" },
-  { name: "Teal", accent: "#14b8a6", accent2: "#84cc16" },
-  { name: "Graphite", accent: "#94a3b8", accent2: "#64748b" },
+  { name: "Indigo", accent: "#6366f1", accent2: "#8b5cf6" },
+  { name: "Saffron", accent: "#ea580c", accent2: "#f59e0b" },
+  { name: "Emerald", accent: "#059669", accent2: "#10b981" },
+  { name: "Rose", accent: "#e11d48", accent2: "#f43f5e" },
+  { name: "Sky", accent: "#0284c7", accent2: "#38bdf8" },
+  { name: "Teal", accent: "#0d9488", accent2: "#14b8a6" },
+  { name: "Graphite", accent: "#475569", accent2: "#64748b" },
 ];
 
-export type AppState = {
-  conversations: Conversation[];
-  activeId: string | null;
-  models: ModelDef[];
-  customProviders: CustomProviderDef[];
-  mcpServers: McpServer[];
-  settings: Settings;
-  keys: Record<string, KeyInfo>;
+/** Attachment limits. Images are downscaled before they are stored. */
+export const ATTACH = {
+  maxFiles: 6,
+  maxImageDim: 1280,
+  imageQuality: 0.82,
+  maxImageBytes: 8 * 1024 * 1024,
+  maxTextBytes: 1024 * 1024,
+  maxTextChars: 40000,
 };
