@@ -104,7 +104,8 @@ see what a gateway currently serves, because hosted model IDs rotate constantly.
 Global defaults in Settings, per-chat overrides from the composer:
 
 `temperature` · `top_p` · `top_k` · `max_tokens` · `presence_penalty` · `frequency_penalty` · `seed` ·
-`stop` (up to 4) · `reasoning_effort` (auto/low/medium/high) · JSON mode
+`stop` (up to 4) · `reasoning_effort` (auto/low/medium/high) · JSON mode · `max_tokens`
+(auto = the model's own documented limit, or manual up to **2,000,000**)
 
 Each is mapped to the right field per provider (Anthropic gets `stop_sequences` and `top_k`, OpenAI
 reasoning models get `max_completion_tokens` and `reasoning_effort`, Sarvam v2 gets `low/high/max`).

@@ -1,6 +1,6 @@
 import type { ModelDef, ProviderId } from "@/lib/catalog";
 import { PROVIDERS } from "@/lib/catalog";
-import type { Attachment, ModelParams } from "@/lib/types";
+import { MAX_OUTPUT_CEILING, type Attachment, type ModelParams } from "@/lib/types";
 
 /* ------------------------------------------------------------------ types */
 
@@ -54,6 +54,18 @@ export type CustomEndpoint = {
   authHeader: string;
   authPrefix: string;
 };
+
+/**
+ * Output-token budget for a request.
+ * `null` (auto) means "whatever the model documents" — which is what the model
+ * catalogue carries. A manual value is sent verbatim up to the 2M ceiling, so a
+ * user who knows their endpoint supports more is not silently clamped; providers
+ * that do not support it answer with a clear 400 instead.
+ */
+export function resolveMaxTokens(value: number | null | undefined, model: ModelDef): number {
+  const raw = value == null ? model.maxTokens : Math.floor(value);
+  return Math.max(1, Math.min(Number.isFinite(raw) ? raw : model.maxTokens, MAX_OUTPUT_CEILING));
+}
 
 export type RequestOpts = {
   params?: Partial<ModelParams>;
@@ -224,7 +236,7 @@ function openAiBody(
   const effort = reasoningEffortFor(model.provider, p.reasoningEffort);
   if (effort) body.reasoning_effort = effort;
 
-  const maxOut = Math.min(p.maxTokens || model.maxTokens, model.maxTokens);
+  const maxOut = resolveMaxTokens(p.maxTokens, model);
   if (maxOut) {
     // OpenAI's reasoning models want max_completion_tokens; everyone else uses max_tokens.
     if (model.provider === "openai") body.max_completion_tokens = maxOut;
@@ -258,7 +270,7 @@ function anthropicBody(
 
   const body: Record<string, unknown> = {
     model: model.id,
-    max_tokens: Math.min(p.maxTokens || model.maxTokens, model.maxTokens),
+    max_tokens: resolveMaxTokens(p.maxTokens, model),
     messages: rest.map((m) => {
       if (m.role === "tool") {
         return {

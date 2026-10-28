@@ -43,6 +43,7 @@ import {
 import { cn, fmtTime, uuid } from "@/lib/cn";
 import { Button, IconButton, Modal, Select, Slider, Switch } from "@/components/ui";
 import { ModelPicker } from "@/components/ModelPicker";
+import { MaxTokensField } from "@/components/MaxTokensField";
 import { toast } from "@/components/Toast";
 import { PROVIDERS } from "@/lib/catalog";
 
@@ -701,7 +702,13 @@ export function ChatView({
 
           <p className="mt-1.5 hidden px-1 text-center text-[10.5px] leading-relaxed text-muted/70 sm:block">
             {model
-              ? `${model.name} · ${(model.contextWindow / 1000).toFixed(0)}K ctx · temp ${params.temperature.toFixed(2)} · max ${params.maxTokens} tokens`
+              ? `${model.name} · ${(model.contextWindow / 1000).toFixed(0)}K ctx · temp ${params.temperature.toFixed(
+                  2,
+                )} · out ${
+                  params.maxTokens == null
+                    ? `${model.maxTokens.toLocaleString("en-US")} (auto)`
+                    : params.maxTokens.toLocaleString("en-US")
+                }`
               : "No model selected"}
             {" · keys stay on this device"}
           </p>
@@ -711,6 +718,7 @@ export function ChatView({
       <Modal open={paramsOpen} onClose={() => setParamsOpen(false)} title="Model parameters">
         <ParamsForm
           params={params}
+          model={model ?? null}
           hasOverrides={hasOverrides}
           onChange={(patch) => {
             if (!active) return;
@@ -734,12 +742,14 @@ export function ChatView({
 
 function ParamsForm({
   params,
+  model,
   hasOverrides,
   onChange,
   onReset,
   onEditDefaults,
 }: {
   params: ModelParams;
+  model: { name: string; maxTokens: number } | null;
   hasOverrides: boolean;
   onChange: (patch: Partial<ModelParams>) => void;
   onReset: () => void;
@@ -777,14 +787,14 @@ function ParamsForm({
         max={100}
         onChange={(v) => onChange({ topK: v === 0 ? null : v })}
       />
-      <Slider
-        label="Max output tokens"
-        value={params.maxTokens}
-        min={256}
-        max={32768}
-        step={256}
-        onChange={(v) => onChange({ maxTokens: v })}
-      />
+      <div className="py-1.5">
+        <MaxTokensField
+          value={params.maxTokens}
+          modelMax={model?.maxTokens ?? 8192}
+          modelName={model?.name}
+          onChange={(v) => onChange({ maxTokens: v })}
+        />
+      </div>
 
       <div className="grid grid-cols-2 gap-3 pt-2">
         <div>

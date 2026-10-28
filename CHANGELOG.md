@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.1.0 — October 2026
+
+### Changed
+- **Max output tokens is now "Auto" by default**, driven by the model's own documented limit from the
+  catalogue — Sarvam-105B sends 8,192, GPT-6 Astra 128,000, Gemini 65,536, and so on. No more guessing.
+- **Manual override goes up to 2,000,000 tokens.** A value above what the model documents is sent
+  verbatim (with a warning in the panel) instead of being silently clamped, so an endpoint that really
+  supports more is not held back. The provider still decides whether it can honour it.
+- The token field is a proper input with presets (4K · 8K · 32K · 128K · 1M · 2M · model default)
+  instead of a slider that stopped at 32K.
+
+### Fixed
+- Token counts are formatted as 1,000,000 rather than 10,00,000, which was easy to misread.
+
 ## 3.0.1 — October 2026
 
 ### Fixed

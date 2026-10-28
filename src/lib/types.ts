@@ -80,7 +80,8 @@ export type ModelParams = {
   temperature: number;
   topP: number;
   topK: number | null;
-  maxTokens: number;
+  /** null = use the model's own documented output limit (auto). */
+  maxTokens: number | null;
   presencePenalty: number;
   frequencyPenalty: number;
   seed: number | null;
@@ -89,11 +90,14 @@ export type ModelParams = {
   jsonMode: boolean;
 };
 
+/** Hard ceiling for a manual override. Providers reject anything they do not support. */
+export const MAX_OUTPUT_CEILING = 2_000_000;
+
 export const DEFAULT_PARAMS: ModelParams = {
   temperature: 0.7,
   topP: 0.95,
   topK: null,
-  maxTokens: 4096,
+  maxTokens: null,
   presencePenalty: 0,
   frequencyPenalty: 0,
   seed: null,

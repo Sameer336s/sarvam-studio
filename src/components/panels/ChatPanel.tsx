@@ -2,6 +2,7 @@ import { RotateCcw } from "lucide-react";
 import { useApp } from "@/lib/store";
 import { DEFAULT_PARAMS, DEFAULT_SYSTEM_PROMPT, type ModelParams } from "@/lib/types";
 import { Button, Card, Field, Select, Slider, Switch, Textarea } from "@/components/ui";
+import { MaxTokensField } from "@/components/MaxTokensField";
 
 const PROMPT_PRESETS: { name: string; value: string }[] = [
   { name: "Balanced assistant", value: DEFAULT_SYSTEM_PROMPT },
@@ -32,6 +33,8 @@ export function ChatPanel() {
 
   const patchParams = (patch: Partial<ModelParams>) =>
     patchSettings({ params: { ...settings.params, ...patch } });
+
+  const defaultModel = visibleModels.find((m) => m.id === settings.defaultModelId);
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -100,14 +103,14 @@ export function ChatPanel() {
           max={100}
           onChange={(v) => patchParams({ topK: v === 0 ? null : v })}
         />
-        <Slider
-          label="Max output tokens"
-          value={settings.params.maxTokens}
-          min={256}
-          max={32768}
-          step={256}
-          onChange={(v) => patchParams({ maxTokens: v })}
-        />
+        <div className="py-1.5">
+          <MaxTokensField
+            value={settings.params.maxTokens}
+            modelMax={defaultModel?.maxTokens ?? 8192}
+            modelName={defaultModel?.name}
+            onChange={(v) => patchParams({ maxTokens: v })}
+          />
+        </div>
         <div className="grid grid-cols-2 gap-3 pt-2">
           <Field label="Presence penalty">
             <input
