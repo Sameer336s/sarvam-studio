@@ -42,3 +42,15 @@ export function maskKey(key: string): string {
   if (key.length <= 10) return "•".repeat(key.length);
   return `${key.slice(0, 5)}${"•".repeat(Math.min(14, key.length - 9))}${key.slice(-4)}`;
 }
+
+/** crypto.randomUUID is secure-context only; fall back everywhere else. */
+export function uuid(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch {
+    /* ignore */
+  }
+  return `id_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}

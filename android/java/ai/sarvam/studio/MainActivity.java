@@ -9,6 +9,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -29,8 +30,12 @@ public class MainActivity extends Activity {
 
     private static final String APP_URL = "file:///android_asset/www/index.html";
     private static final int BG = Color.parseColor("#06060A");
+    private static final int REQ_PICK_FILE = 1001;
 
     private WebView web;
+
+    /** Pending callback from <input type="file">. Must be answered exactly once. */
+    private ValueCallback<Uri[]> fileCallback;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -70,7 +75,46 @@ public class MainActivity extends Activity {
         }
 
         web.addJavascriptInterface(new SecureBridge(this), "AndroidSecure");
-        web.setWebChromeClient(new WebChromeClient());
+
+        /*
+         * The file chooser MUST be wired up here. A bare `new WebChromeClient()` silently
+         * swallows the tap on <input type="file"> — that is why attachments did nothing in
+         * the APK while working fine in a desktop browser.
+         */
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(
+                    WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                // A previous callback may still be outstanding; resolve it first.
+                if (fileCallback != null) {
+                    fileCallback.onReceiveValue(null);
+                    fileCallback = null;
+                }
+                fileCallback = callback;
+                try {
+                    Intent intent = params.createIntent();
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivityForResult(intent, REQ_PICK_FILE);
+                    return true;
+                } catch (Exception e) {
+                    // No document picker on this device — fall back to any file browser.
+                    try {
+                        Intent fallback = new Intent(Intent.ACTION_GET_CONTENT);
+                        fallback.setType("*/*");
+                        fallback.addCategory(Intent.CATEGORY_OPENABLE);
+                        fallback.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                        fallback.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        startActivityForResult(fallback, REQ_PICK_FILE);
+                        return true;
+                    } catch (Exception e2) {
+                        fileCallback = null;
+                        return false;
+                    }
+                }
+            }
+        });
+
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -89,6 +133,32 @@ public class MainActivity extends Activity {
         setContentView(root);
 
         web.loadUrl(APP_URL);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQ_PICK_FILE) {
+            if (fileCallback == null) {
+                super.onActivityResult(requestCode, resultCode, data);
+                return;
+            }
+            Uri[] results = null;
+            if (resultCode == RESULT_OK && data != null) {
+                if (data.getClipData() != null) {
+                    int count = data.getClipData().getItemCount();
+                    results = new Uri[count];
+                    for (int i = 0; i < count; i++) {
+                        results[i] = data.getClipData().getItemAt(i).getUri();
+                    }
+                } else if (data.getData() != null) {
+                    results = new Uri[]{data.getData()};
+                }
+            }
+            fileCallback.onReceiveValue(results);
+            fileCallback = null;
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
     }
 
     /** Keep the app's own pages in the WebView; send everything else to the browser. */
@@ -127,6 +197,10 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (fileCallback != null) {
+            fileCallback.onReceiveValue(null);
+            fileCallback = null;
+        }
         if (web != null) {
             web.setVisibility(View.GONE);
             web.destroy();

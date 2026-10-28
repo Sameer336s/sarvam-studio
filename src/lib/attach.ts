@@ -13,6 +13,18 @@ const TEXT_EXT = [
   ".kt", ".c", ".h", ".cpp", ".cs", ".php", ".sh", ".sql", ".ini", ".toml", ".env",
 ];
 
+const IMAGE_EXT = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif", ".heic", ".heif"];
+
+/**
+ * Android file providers sometimes hand back application/octet-stream with a real
+ * filename, so the MIME type alone is not enough to recognise a photo.
+ */
+function looksImage(file: File): boolean {
+  if (file.type.startsWith("image/")) return true;
+  const name = file.name.toLowerCase();
+  return IMAGE_EXT.some((ext) => name.endsWith(ext));
+}
+
 function looksTextual(file: File): boolean {
   if (file.type.startsWith("text/")) return true;
   if (/^application\/(json|xml|x-yaml|javascript|x-sh)/.test(file.type)) return true;
@@ -67,11 +79,24 @@ async function downscale(dataUrl: string): Promise<{ url: string; width: number;
 let seq = 0;
 const uid = () => `att_${Date.now().toString(36)}_${(seq++).toString(36)}`;
 
+export type AttachResult = { ok: true; attachment: Attachment } | { ok: false; reason: string };
+
+function unsupportedReason(file: File): string {
+  const type = file.type || file.name.split(".").pop() || "file";
+  if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"))
+    return "PDF is not supported yet — send a .txt export or a screenshot instead";
+  if (/word|excel|powerpoint|officedocument/.test(file.type))
+    return "Office documents are not supported — export to .txt or .csv first";
+  if (file.type.startsWith("video/") || file.type.startsWith("audio/"))
+    return "audio and video are not supported yet";
+  return `${type} is not supported yet (images and text files are)`;
+}
+
 /**
  * Turn a File into an attachment we can send to a model.
- * Returns null when the file is too big or cannot be used.
+ * Returns a reason when the file cannot be used, so the UI can say why.
  */
-export async function fileToAttachment(file: File): Promise<Attachment | null> {
+export async function fileToAttachment(file: File): Promise<AttachResult> {
   const base = {
     id: uid(),
     name: file.name || "pasted",
@@ -79,41 +104,57 @@ export async function fileToAttachment(file: File): Promise<Attachment | null> {
     size: file.size,
   };
 
-  if (file.type.startsWith("image/")) {
-    if (file.size > ATTACH.maxImageBytes) return null;
-    const raw = await readAsDataUrl(file);
-    const { url, width, height } = await downscale(raw);
-    return { ...base, kind: "image", dataUrl: url, width, height };
+  if (looksImage(file)) {
+    if (file.size > ATTACH.maxImageBytes)
+      return { ok: false, reason: `image is larger than ${formatBytes(ATTACH.maxImageBytes)}` };
+    try {
+      const raw = await readAsDataUrl(file);
+      const { url, width, height } = await downscale(raw);
+      return { ok: true, attachment: { ...base, kind: "image", dataUrl: url, width, height } };
+    } catch {
+      return {
+        ok: false,
+        reason: "this image format cannot be decoded here — try JPEG, PNG or WebP",
+      };
+    }
   }
 
   if (looksTextual(file)) {
-    if (file.size > ATTACH.maxTextBytes) return null;
+    if (file.size > ATTACH.maxTextBytes)
+      return { ok: false, reason: `text file is larger than ${formatBytes(ATTACH.maxTextBytes)}` };
     const text = await readAsText(file);
     return {
-      ...base,
-      kind: "text",
-      text: text.length > ATTACH.maxTextChars ? text.slice(0, ATTACH.maxTextChars) : text,
+      ok: true,
+      attachment: {
+        ...base,
+        kind: "text",
+        text: text.length > ATTACH.maxTextChars ? text.slice(0, ATTACH.maxTextChars) : text,
+      },
     };
   }
 
-  return null;
+  return { ok: false, reason: unsupportedReason(file) };
 }
 
-/** Files dropped or picked in one go, with per-file error reporting. */
+/** Files dropped or picked in one go, with a reason per skipped file. */
 export async function filesToAttachments(
   files: FileList | File[],
   existing: number,
 ): Promise<{ added: Attachment[]; skipped: string[] }> {
-  const list = Array.from(files).slice(0, Math.max(0, ATTACH.maxFiles - existing));
+  const all = Array.from(files);
+  const room = Math.max(0, ATTACH.maxFiles - existing);
+  const list = all.slice(0, room);
   const added: Attachment[] = [];
   const skipped: string[] = [];
+  if (all.length > room) skipped.push(`only ${ATTACH.maxFiles} attachments per message`);
+
   for (const f of list) {
     try {
-      const a = await fileToAttachment(f);
-      if (a) added.push(a);
-      else skipped.push(`${f.name} (unsupported or too large)`);
+      const res = await fileToAttachment(f);
+      if (res.ok) added.push(res.attachment);
+      else skipped.push(`${f.name}: ${res.reason}`);
     } catch {
-      skipped.push(`${f.name} (could not read)`);
+      skipped.push(`${f.name}: could not be read`);
     }
   }
   return { added, skipped };

@@ -40,7 +40,7 @@ import {
   type ModelParams,
   type ToolRun,
 } from "@/lib/types";
-import { cn, fmtTime } from "@/lib/cn";
+import { cn, fmtTime, uuid } from "@/lib/cn";
 import { Button, IconButton, Modal, Select, Slider, Switch } from "@/components/ui";
 import { ModelPicker } from "@/components/ModelPicker";
 import { toast } from "@/components/Toast";
@@ -145,7 +145,7 @@ export function ChatView({
       try {
         const { added, skipped } = await filesToAttachments(files, attachments.length);
         if (added.length) setAttachments((prev) => [...prev, ...added].slice(0, ATTACH.maxFiles));
-        if (skipped.length) toast(`Skipped: ${skipped.join(", ")}`, "warn");
+        if (skipped.length) toast(skipped.slice(0, 2).join(" · "), "warn");
         if (added.length) toast(`${added.length} file${added.length === 1 ? "" : "s"} attached`, "ok");
       } finally {
         setAttachBusy(false);
@@ -190,7 +190,7 @@ export function ChatView({
       const chatParams: ModelParams = { ...live.settings.params, ...(conv?.params ?? {}) };
 
       const userMsg: ChatMsg = {
-        id: crypto.randomUUID(),
+        id: uuid(),
         role: "user",
         content: text,
         createdAt: Date.now(),
@@ -200,7 +200,7 @@ export function ChatView({
       setInput("");
       setAttachments([]);
 
-      const asstId = crypto.randomUUID();
+      const asstId = uuid();
       live.addMessage(chatId, {
         id: asstId,
         role: "assistant",
@@ -664,7 +664,7 @@ export function ChatView({
                   ref={fileRef}
                   type="file"
                   multiple
-                  accept="image/*,text/*,.md,.json,.csv,.tsv,.log,.yml,.yaml,.xml,.html,.css,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.c,.h,.cpp,.cs,.php,.sh,.sql,.ini,.toml"
+                  accept="image/*,text/*,application/pdf,.md,.json,.csv,.tsv,.log,.yml,.yaml,.xml,.html,.css,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.c,.h,.cpp,.cs,.php,.sh,.sql,.ini,.toml,.pdf"
                   className="hidden"
                   onChange={(e) => {
                     const f = e.target.files;

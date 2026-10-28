@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.0.1 — October 2026
+
+### Fixed
+- **Attachments did nothing in the Android app.** The WebView was created with a bare
+  `WebChromeClient`, which silently swallows taps on `<input type="file">`. `onShowFileChooser`
+  and `onActivityResult` are now implemented, so the paperclip opens the system document picker
+  and the chosen files reach the page. (This never affected the browser build.)
+- Files whose MIME type arrives as `application/octet-stream` (common with Android file
+  providers) are now recognised as images by extension instead of being rejected.
+- PDFs and Office documents are no longer greyed out by the file filter; picking one explains
+  that it is not supported yet instead of failing silently.
+- `crypto.randomUUID` is only available in secure contexts, so message ids now fall back to a
+  generated id — sending works on plain-http deployments too.
+
 ## 3.0.0 — October 2026
 
 Performance pass plus the features people asked for most.
