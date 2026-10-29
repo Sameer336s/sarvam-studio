@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.3.1 — October 2026
+
+### Fixed
+- **Speech-to-text rejected the recording.** MediaRecorder produces `audio/webm;codecs=opus`, and
+  Sarvam's STT endpoint only accepts mpeg/mp3/wav-family types — it answered 400 "Invalid file type".
+  The recorder's audio is now decoded and re-encoded as **16 kHz mono 16-bit WAV** in the browser before
+  upload, which is both accepted and what the docs recommend for accuracy.
+- Error text from the STT endpoint is parsed out of the JSON body instead of showing the raw response.
+
 ## 3.3.0 — October 2026
 
 ### Fixed — the "stream was interrupted" bug

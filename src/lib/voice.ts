@@ -114,6 +114,74 @@ export async function startRecording(maxMs = 30000): Promise<Recorder> {
   };
 }
 
+/* ------------------------------------------------------- audio conversion */
+
+/** 16-bit PCM WAV from float samples — the format Sarvam's STT actually accepts. */
+function encodeWav(samples: Float32Array, sampleRate: number): Blob {
+  const bytes = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(bytes);
+  const writeStr = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true); // PCM chunk size
+  view.setUint16(20, 1, true); // format = PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); // byte rate
+  view.setUint16(32, 2, true); // block align
+  view.setUint16(34, 16, true); // bits per sample
+  writeStr(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const v = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+    offset += 2;
+  }
+  return new Blob([bytes], { type: "audio/wav" });
+}
+
+/**
+ * MediaRecorder gives us webm/opus (or mp4/aac on some devices) and Sarvam's
+ * speech-to-text only takes mpeg/mp3/wav/aac-family types — it rejects
+ * "audio/webm;codecs=opus" outright. So decode locally and re-encode as
+ * 16 kHz mono WAV, which is also what their docs recommend.
+ */
+export async function toWav(blob: Blob, targetRate = 16000): Promise<Blob> {
+  const Ctx =
+    (globalThis as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext })
+      .AudioContext ??
+    (globalThis as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  const Offline =
+    (globalThis as unknown as { OfflineAudioContext?: typeof OfflineAudioContext }).OfflineAudioContext ??
+    (globalThis as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext })
+      .webkitOfflineAudioContext;
+  if (!Ctx || !Offline) throw new Error("This browser cannot convert audio.");
+
+  const buffer = await blob.arrayBuffer();
+  const ctx = new Ctx();
+  let decoded: AudioBuffer;
+  try {
+    decoded = await ctx.decodeAudioData(buffer.slice(0));
+  } finally {
+    void ctx.close?.();
+  }
+  if (!decoded || decoded.duration < 0.2) throw new Error("That recording was too short.");
+
+  const frames = Math.max(1, Math.ceil(decoded.duration * targetRate));
+  const offline = new Offline(1, frames, targetRate);
+  const src = offline.createBufferSource();
+  src.buffer = decoded;
+  src.connect(offline.destination);
+  src.start();
+  const rendered = await offline.startRendering();
+  return encodeWav(rendered.getChannelData(0), targetRate);
+}
+
 /* ------------------------------------------------------------------- stt */
 
 export async function transcribeSarvam(
@@ -121,9 +189,21 @@ export async function transcribeSarvam(
   apiKey: string,
   language = "unknown",
 ): Promise<{ text: string; language: string }> {
-  const ext = audio.type.includes("mp4") ? "m4a" : audio.type.includes("ogg") ? "ogg" : "webm";
+  // Always upload WAV: the API rejects audio/webm;codecs=opus and friends.
+  let upload = audio;
+  let name = "speech.wav";
+  try {
+    upload = await toWav(audio);
+  } catch {
+    // Conversion unavailable — send the raw bytes but strip the codecs parameter,
+    // which is what trips the server-side MIME validation.
+    const plain = (audio.type || "audio/webm").split(";")[0];
+    upload = audio.slice(0, audio.size, plain);
+    name = plain.includes("mp4") ? "speech.m4a" : plain.includes("mpeg") ? "speech.mp3" : "speech.webm";
+  }
+
   const form = new FormData();
-  form.append("file", audio, `speech.${ext}`);
+  form.append("file", upload, name);
   form.append("model", "saaras:v4");
   form.append("mode", "transcribe");
   form.append("language_code", language || "unknown");
@@ -135,10 +215,17 @@ export async function transcribeSarvam(
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
+    let detail = body.slice(0, 200);
+    try {
+      const parsed = JSON.parse(body);
+      detail = parsed?.error?.message ?? parsed?.detail ?? detail;
+    } catch {
+      /* keep the raw text */
+    }
     throw new Error(
       res.status === 401 || res.status === 403
         ? "Sarvam key rejected for speech-to-text."
-        : `Speech-to-text failed (${res.status}). ${body.slice(0, 140)}`,
+        : `Speech-to-text failed (${res.status}): ${String(detail).slice(0, 180)}`,
     );
   }
   const json: any = await res.json();

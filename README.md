@@ -74,7 +74,8 @@ Version 3 is a performance and capability pass on top of v2:
 
 ### Talk mode
 - **Speak your message** — the mic records up to 30 s and transcribes with Sarvam Saaras
-  (`saaras:v4`) or the browser's speech engine; auto-send or edit the transcript first.
+  (`saaras:v4`) or the browser's speech engine; auto-send or edit the transcript first. Recordings are
+  re-encoded to 16 kHz mono WAV before upload, because the API rejects webm/opus.
 - **Hear replies** — a speaker toggle reads answers with the phone's voices, choosing the language
   from the script of the text, with a rate slider.
 - Speech-to-text language picker: auto-detect plus 13 Indian languages.
