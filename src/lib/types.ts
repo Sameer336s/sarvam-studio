@@ -31,6 +31,8 @@ export type ChatMsg = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  /** Set when a reply was cut short, so the UI can offer "Continue". */
+  notice?: "length" | "interrupted";
   createdAt: number;
   modelId?: string;
   error?: boolean;
@@ -133,6 +135,16 @@ export type Settings = {
   rememberKeys: boolean;
   showLegacyModels: boolean;
   defaultModelId: string;
+
+  /** What "Auto" sends as the output budget. */
+  autoMaxTokens: "max" | "balanced";
+  /** Spoken replies (talk mode). */
+  speakReplies: boolean;
+  voiceRate: number;
+  /** BCP-47 code for speech-to-text, or "unknown" to auto-detect. */
+  sttLanguage: string;
+  /** Send the transcript automatically when recording stops. */
+  talkAutoSend: boolean;
 };
 
 export const DEFAULT_SYSTEM_PROMPT =
@@ -165,6 +177,12 @@ export const DEFAULT_SETTINGS: Settings = {
   rememberKeys: true,
   showLegacyModels: false,
   defaultModelId: "sarvam-105b",
+
+  autoMaxTokens: "max",
+  speakReplies: false,
+  voiceRate: 1,
+  sttLanguage: "unknown",
+  talkAutoSend: true,
 };
 
 export const ACCENT_PRESETS: { name: string; accent: string; accent2: string }[] = [

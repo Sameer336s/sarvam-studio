@@ -9,12 +9,16 @@ import {
   FileText,
   Image as ImageIcon,
   Loader2,
+  Mic,
   Paperclip,
+  Volume2,
+  VolumeX,
   Pencil,
   Plug,
   RefreshCw,
   Settings2,
   Square,
+  AudioLines,
   Trash2,
   User,
   Wrench,
@@ -45,6 +49,17 @@ import { Button, IconButton, Modal, Select, Slider, Switch } from "@/components/
 import { ModelPicker } from "@/components/ModelPicker";
 import { ArtifactBar } from "@/components/ArtifactBar";
 import { AUTO_ID, pickAutoModel } from "@/lib/autoModel";
+import {
+  speak,
+  speakable,
+  startRecording,
+  sttEngine,
+  stopSpeaking,
+  transcribeBrowser,
+  transcribeSarvam,
+  ttsAvailable,
+  type Recorder,
+} from "@/lib/voice";
 import { MaxTokensField } from "@/components/MaxTokensField";
 import { toast } from "@/components/Toast";
 import { PROVIDERS } from "@/lib/catalog";
@@ -96,6 +111,9 @@ export function ChatView({
   const [paramsOpen, setParamsOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
+  const [recorder, setRecorder] = useState<Recorder | null>(null);
+  const [recSecs, setRecSecs] = useState(0);
+  const [transcribing, setTranscribing] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -222,6 +240,10 @@ export function ChatView({
       const conv = live.conversations.find((c) => c.id === chatId);
       const history = conv?.messages ?? [];
       const chatParams: ModelParams = { ...live.settings.params, ...(conv?.params ?? {}) };
+      // "Auto" already means the model's own limit; balanced mode trims it to a sane default.
+      if (chatParams.maxTokens == null && live.settings.autoMaxTokens === "balanced") {
+        chatParams.maxTokens = Math.min(model.maxTokens, 4096);
+      }
 
       const userMsg: ChatMsg = {
         id: uuid(),
@@ -396,43 +418,84 @@ export function ChatView({
           return;
         }
 
-        /* ---- streaming answer ---- */
-        const gen = await streamChat({
-          model,
-          apiKey,
-          messages: followUp ?? apiMessages,
-          custom: endpointCfg,
-          params: chatParams,
-          tools: followUp ? undefined : tools.length ? tools.map((t) => t.spec) : undefined,
-          signal: ctrl.signal,
-        });
-
+        /* ---- streaming answer (one silent retry if the connection drops early) ---- */
         let usage: ChatMsg["usage"];
-        for await (const ev of gen) {
-          if (ev.error) {
-            pendingContent = pendingContent ? `${pendingContent}\n\n⚠️ ${ev.error}` : ev.error;
-            flushNow();
-            storeRef.current.updateMessage(chatId, asstId, { error: !pendingContent });
-            break;
-          }
-          if (ev.reasoning) {
-            pendingReasoning += ev.reasoning;
-            schedule();
-          }
-          if (ev.delta) {
-            pendingContent += ev.delta;
-            schedule();
-          }
-          if (ev.usage) usage = { ...usage, ...ev.usage };
-          if (ev.done) break;
-        }
-        flushNow();
-        if (!pendingContent && !pendingReasoning)
-          storeRef.current.updateMessage(chatId, asstId, {
-            content: "(The model returned an empty response.)",
+        let finish: string | undefined;
+        let interrupted = false;
+
+        for (let attempt = 0; attempt < 2; attempt++) {
+          interrupted = false;
+          let gotAnything = false;
+          const gen = await streamChat({
+            model,
+            apiKey,
+            messages: followUp ?? apiMessages,
+            custom: endpointCfg,
+            params: chatParams,
+            tools: followUp ? undefined : tools.length ? tools.map((t) => t.spec) : undefined,
+            signal: ctrl.signal,
           });
+
+          for await (const ev of gen) {
+            if (ev.error) {
+              // Nothing arrived yet? The stream may simply have been dropped — retry once.
+              if (!gotAnything && attempt === 0 && !ctrl.signal.aborted) {
+                interrupted = true;
+                break;
+              }
+              pendingContent = pendingContent ? `${pendingContent}\n\n⚠️ ${ev.error}` : ev.error;
+              flushNow();
+              storeRef.current.updateMessage(chatId, asstId, { error: !pendingContent });
+              return;
+            }
+            if (ev.finish) finish = ev.finish;
+            if (ev.reasoning) {
+              pendingReasoning += ev.reasoning;
+              gotAnything = true;
+              schedule();
+            }
+            if (ev.delta) {
+              pendingContent += ev.delta;
+              gotAnything = true;
+              schedule();
+            }
+            if (ev.usage) usage = { ...usage, ...ev.usage };
+            if (ev.done) break;
+          }
+
+          if (!interrupted) break;
+          await new Promise((r) => setTimeout(r, 500));
+        }
+
+        flushNow();
+
+        const cut = finish === "length" || finish === "max_tokens";
+        if (!pendingContent && !pendingReasoning) {
+          storeRef.current.updateMessage(chatId, asstId, {
+            content: interrupted
+              ? "The connection dropped before the model answered. Tap retry to send it again."
+              : "(The model returned an empty response.)",
+            error: interrupted,
+          });
+        } else {
+          if (cut) {
+            storeRef.current.updateMessage(chatId, asstId, { notice: "length" });
+            toast(
+              `Reply hit the output limit (${(chatParams.maxTokens ?? model.maxTokens).toLocaleString(
+                "en-US",
+              )} tokens) — raise max output tokens or lower reasoning effort`,
+              "warn",
+            );
+          } else if (interrupted) {
+            storeRef.current.updateMessage(chatId, asstId, { notice: "interrupted" });
+          }
+        }
         if (usage) storeRef.current.updateMessage(chatId, asstId, { usage });
         if (ctrl.signal.aborted) storeRef.current.updateMessage(chatId, asstId, { stopped: true });
+
+        if (live.settings.speakReplies && pendingContent) {
+          speak(pendingContent, { rate: live.settings.voiceRate });
+        }
       } catch (e) {
         if ((e as Error).name === "AbortError") {
           flushNow();
@@ -485,6 +548,84 @@ export function ChatView({
     store.dropMessagesFrom(active.id, id);
     setEditing(null);
     setTimeout(() => void runSend(text), 30);
+  };
+
+  /* ------------------------------------------------------------ talk mode */
+  useEffect(() => {
+    if (!recorder) return;
+    const t = setInterval(() => setRecSecs(Math.floor(recorder.elapsed() / 1000)), 200);
+    return () => clearInterval(t);
+  }, [recorder]);
+
+  const startTalk = async () => {
+    const key = storeRef.current.keyFor("sarvam");
+    if (sttEngine(!!key) === "none") {
+      toast("Speech input needs a Sarvam key (or Chrome's built-in speech engine).", "warn");
+      onOpenSettings();
+      return;
+    }
+    stopSpeaking();
+    try {
+      const rec = await startRecording(30000);
+      setRecorder(rec);
+      setRecSecs(0);
+    } catch (e) {
+      toast((e as Error).message || "Could not start the microphone", "warn");
+    }
+  };
+
+  const stopTalk = async (cancel = false) => {
+    if (!recorder) return;
+    const rec = recorder;
+    setRecorder(null);
+    setRecSecs(0);
+    if (cancel) {
+      rec.cancel();
+      return;
+    }
+    const blob = await rec.stop();
+    if (blob.size < 1200) {
+      toast("That was too short — hold a little longer", "warn");
+      return;
+    }
+    const live = storeRef.current;
+    const key = live.keyFor("sarvam");
+    const engine = sttEngine(!!key);
+    setTranscribing(true);
+    try {
+      const lang = live.settings.sttLanguage;
+      const text =
+        engine === "sarvam"
+          ? (await transcribeSarvam(blob, key, lang)).text
+          : await transcribeBrowser(lang);
+      if (!text) {
+        toast("Could not hear anything in that recording", "warn");
+        return;
+      }
+      if (live.settings.talkAutoSend) void sendRef.current(text);
+      else setInput((v) => (v ? `${v} ${text}` : text));
+    } catch (e) {
+      toast((e as Error).message || "Transcription failed", "warn");
+    } finally {
+      setTranscribing(false);
+    }
+  };
+
+  const continueReply = useCallback((id: string) => {
+    const live = storeRef.current;
+    const conv = live.conversations.find((c) => c.id === live.activeId);
+    const m = conv?.messages.find((x) => x.id === id);
+    if (m) live.updateMessage(conv!.id, id, { notice: undefined });
+    void sendRef.current(
+      "Continue exactly where you stopped. Do not repeat what you already wrote and do not start over.",
+    );
+  }, []);
+
+  const toggleSpeak = () => {
+    const next = !storeRef.current.settings.speakReplies;
+    storeRef.current.patchSettings({ speakReplies: next });
+    if (!next) stopSpeaking();
+    else toast("Replies will be read aloud", "ok");
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -608,6 +749,7 @@ export function ChatView({
                 onEditSubmit={submitEdit}
                 onEditStart={startEdit}
                 onRegenerate={regenerate}
+                onContinue={continueReply}
                 onDelete={deleteMessage}
                 onCopy={copyMessage}
               />
@@ -662,6 +804,28 @@ export function ChatView({
             </div>
           )}
 
+          {recorder && (
+            <div className="mb-1.5 flex items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/10 px-2.5 py-1.5">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+              <span className="text-[11.5px] font-medium text-red-300">
+                Listening… {Math.floor(recSecs / 60)}:{String(recSecs % 60).padStart(2, "0")}
+              </span>
+              <span className="flex-1" />
+              <button
+                onClick={() => void stopTalk(true)}
+                className="rounded-md px-2 py-0.5 text-[11px] text-red-300 hover:bg-red-500/20"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void stopTalk()}
+                className="flex items-center gap-1 rounded-md bg-red-500/25 px-2 py-0.5 text-[11px] font-medium text-red-100 hover:bg-red-500/35"
+              >
+                <AudioLines className="h-3 w-3" /> Use this
+              </button>
+            </div>
+          )}
+
           <div className="glass-hi p-1.5">
             <textarea
               ref={taRef}
@@ -683,6 +847,32 @@ export function ChatView({
                   disabled={attachBusy || attachments.length >= ATTACH.maxFiles}
                 >
                   {attachBusy ? <Loader2 className="h-4 w-4 spin" /> : <Paperclip className="h-4 w-4" />}
+                </IconButton>
+                <IconButton
+                  title={recorder ? "Stop and transcribe" : "Talk — speak your message"}
+                  onClick={() => (recorder ? void stopTalk() : void startTalk())}
+                  active={!!recorder}
+                  disabled={transcribing}
+                >
+                  {transcribing ? (
+                    <Loader2 className="h-4 w-4 spin" />
+                  ) : recorder ? (
+                    <Square className="h-4 w-4 text-red-400" />
+                  ) : (
+                    <Mic className="h-4 w-4" />
+                  )}
+                </IconButton>
+                <IconButton
+                  title={settings.speakReplies ? "Stop reading replies aloud" : "Read replies aloud"}
+                  onClick={toggleSpeak}
+                  active={settings.speakReplies}
+                  disabled={!ttsAvailable()}
+                >
+                  {settings.speakReplies ? (
+                    <Volume2 className="h-4 w-4" />
+                  ) : (
+                    <VolumeX className="h-4 w-4" />
+                  )}
                 </IconButton>
                 <IconButton
                   title="Model parameters"
@@ -931,6 +1121,7 @@ const MessageRow = memo(function MessageRow({
   onEditSubmit,
   onEditStart,
   onRegenerate,
+  onContinue,
   onDelete,
   onCopy,
 }: {
@@ -943,6 +1134,7 @@ const MessageRow = memo(function MessageRow({
   onEditSubmit: () => void;
   onEditStart: (id: string) => void;
   onRegenerate: (id: string) => void;
+  onContinue: (id: string) => void;
   onDelete: (id: string) => void;
   onCopy: (id: string) => void;
 }) {
@@ -1083,6 +1275,22 @@ const MessageRow = memo(function MessageRow({
                 <span />
               </span>
             )}
+          </div>
+        )}
+
+        {!isUser && msg.notice && (
+          <div className="flex items-center gap-2 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 py-1.5">
+            <span className="flex-1 text-[11px] leading-relaxed text-amber-300">
+              {msg.notice === "length"
+                ? "Reply was cut at the output limit."
+                : "The stream was interrupted before it finished."}
+            </span>
+            <button
+              onClick={() => onContinue(msg.id)}
+              className="rounded-md bg-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-200 hover:bg-amber-500/30"
+            >
+              Continue
+            </button>
           </div>
         )}
 

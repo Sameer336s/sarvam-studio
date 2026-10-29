@@ -250,3 +250,126 @@ export const MCP_PRESETS: { name: string; url: string; note: string }[] = [
     note: "Cloudflare's docs MCP. Add an auth header if your account requires one.",
   },
 ];
+
+/* ==================================================================
+   Open-source MCP servers worth knowing about.
+
+   Two very different groups:
+   - hosted: an HTTPS endpoint you can connect to from this page today.
+   - local: an npx/uvx stdio process. A web page cannot start a process,
+     so these need a one-line bridge (supergateway or mcp-proxy) and then
+     you connect to the bridge's URL.
+   ================================================================== */
+
+export type McpCatalogEntry = {
+  name: string;
+  category: "search" | "code" | "data" | "files" | "browser" | "utility";
+  /** Present for hosted servers. */
+  url?: string;
+  /** Present for stdio servers. */
+  command?: string;
+  /** URL to use once the command is running behind a bridge. */
+  bridgedUrl?: string;
+  note: string;
+  hosted: boolean;
+};
+
+export const OPEN_SOURCE_MCP: McpCatalogEntry[] = [
+  {
+    name: "DeepWiki",
+    category: "code",
+    url: "https://mcp.deepwiki.com/mcp",
+    note: "Ask questions about any public GitHub repository. Hosted, no key.",
+    hosted: true,
+  },
+  {
+    name: "Cloudflare Docs",
+    category: "search",
+    url: "https://docs.mcp.cloudflare.com/mcp",
+    note: "Cloudflare's documentation as tools. Hosted, no key.",
+    hosted: true,
+  },
+  {
+    name: "Context7 (Upstash)",
+    category: "code",
+    url: "https://mcp.context7.com/mcp",
+    note: "Up-to-date library documentation for coding questions. Hosted; some endpoints want an API key.",
+    hosted: true,
+  },
+  {
+    name: "GitMCP",
+    category: "code",
+    url: "https://gitmcp.io/modelcontextprotocol/servers",
+    note: "Swap the path for owner/repo to get docs + code search for that project. Hosted, no key.",
+    hosted: true,
+  },
+  {
+    name: "Filesystem",
+    category: "files",
+    command: 'npx -y @modelcontextprotocol/server-filesystem "$HOME/projects"',
+    bridgedUrl: "http://localhost:8000/mcp",
+    note: "Read/write files in the folders you allow. Local — run it behind a bridge.",
+    hosted: false,
+  },
+  {
+    name: "Git",
+    category: "code",
+    command: 'npx -y mcp-server-git --repository "$HOME/projects/app"',
+    bridgedUrl: "http://localhost:8000/mcp",
+    note: "Status, diff, log, commit for a local repository.",
+    hosted: false,
+  },
+  {
+    name: "Memory",
+    category: "data",
+    command: "npx -y @modelcontextprotocol/server-memory",
+    bridgedUrl: "http://localhost:8000/mcp",
+    note: "A knowledge graph the model can write to and recall later.",
+    hosted: false,
+  },
+  {
+    name: "Sequential thinking",
+    category: "utility",
+    command: "npx -y @modelcontextprotocol/server-sequential-thinking",
+    bridgedUrl: "http://localhost:8000/mcp",
+    note: "A scratchpad for multi-step reasoning. Cheap and surprisingly useful.",
+    hosted: false,
+  },
+  {
+    name: "Fetch",
+    category: "search",
+    command: "npx -y mcp-server-fetch",
+    bridgedUrl: "http://localhost:8000/mcp",
+    note: "Fetches a URL and converts it to markdown for the model.",
+    hosted: false,
+  },
+  {
+    name: "SQLite",
+    category: "data",
+    command: 'npx -y mcp-server-sqlite --db-path "$HOME/data/app.db"',
+    bridgedUrl: "http://localhost:8000/mcp",
+    note: "Query and inspect a local SQLite database.",
+    hosted: false,
+  },
+  {
+    name: "Puppeteer",
+    category: "browser",
+    command: "npx -y @modelcontextprotocol/server-puppeteer",
+    bridgedUrl: "http://localhost:8000/mcp",
+    note: "Drives a headless browser: navigate, click, screenshot.",
+    hosted: false,
+  },
+  {
+    name: "GitHub",
+    category: "code",
+    command: "npx -y @modelcontextprotocol/server-github",
+    bridgedUrl: "http://localhost:8000/mcp",
+    note: "Issues, PRs, code search. Needs GITHUB_PERSONAL_ACCESS_TOKEN in the environment.",
+    hosted: false,
+  },
+];
+
+/** One-liner that turns any stdio server into an HTTP endpoint this app can reach. */
+export function bridgeCommand(command: string): string {
+  return `npx -y supergateway --stdio "${command.replace(/"/g, '\\"')}" --port 8000 --outputTransport streamableHttp`;
+}

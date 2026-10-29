@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Check,
   ChevronDown,
+  Copy,
   Loader2,
   Plug,
   Plus,
@@ -13,7 +14,14 @@ import {
   X,
 } from "lucide-react";
 import { useApp } from "@/lib/store";
-import { connectServer, MCP_PRESETS, type McpServer } from "@/lib/mcp";
+import {
+  bridgeCommand,
+  connectServer,
+  MCP_PRESETS,
+  OPEN_SOURCE_MCP,
+  type McpCatalogEntry,
+  type McpServer,
+} from "@/lib/mcp";
 import { Badge, Button, Card, Field, IconButton, Input, Select, Switch } from "@/components/ui";
 import { toast } from "@/components/Toast";
 import { cn } from "@/lib/cn";
@@ -195,6 +203,8 @@ export function McpPanel() {
         </div>
       </Card>
 
+      <OpenSourceCatalog onUse={(url, name) => setDraft({ name, url, transport: "http" })} />
+
       {store.mcpServers.length === 0 ? (
         <Card>
           <p className="py-6 text-center text-[12px] text-muted">
@@ -341,6 +351,98 @@ export function McpPanel() {
           <Check className="h-3.5 w-3.5" /> Connect all
         </Button>
       </Card>
+    </div>
+  );
+}
+
+
+/* --------------------------------------------------- open-source catalogue */
+
+function OpenSourceCatalog({ onUse }: { onUse: (url: string, name: string) => void }) {
+  const hosted = OPEN_SOURCE_MCP.filter((e) => e.hosted);
+  const local = OPEN_SOURCE_MCP.filter((e) => !e.hosted);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copy = async (text: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(id);
+      setTimeout(() => setCopied(null), 1500);
+      toast("Command copied", "ok");
+    } catch {
+      toast("Clipboard blocked — select the text manually", "warn");
+    }
+  };
+
+  return (
+    <Card
+      title="Open-source MCP servers"
+      subtitle="Free, community-run servers. Hosted ones connect straight from the page; local ones need a one-line bridge."
+    >
+      <p className="section-title mb-1.5">Works in the browser</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {hosted.map((e) => (
+          <Card2 key={e.name} e={e} onUse={onUse} />
+        ))}
+      </div>
+
+      <p className="section-title mb-1.5 mt-3">Local — needs a bridge</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {local.map((e) => (
+          <Card2 key={e.name} e={e} onUse={onUse} onCopy={copy} copied={copied} />
+        ))}
+      </div>
+
+      <div className="note-warn mt-2">
+        A web page cannot start a local process. Run the <b>Bridge</b> command in a terminal — it serves
+        the stdio server over HTTP on <code className="font-mono">localhost:8000</code> — then add
+        <code className="font-mono"> http://localhost:8000/mcp</code> as a server above. In the APK this
+        only works when the bridge runs on the same phone (or you use a hosted server).
+      </div>
+    </Card>
+  );
+}
+
+function Card2({
+  e,
+  onUse,
+  onCopy,
+  copied,
+}: {
+  e: McpCatalogEntry;
+  onUse: (url: string, name: string) => void;
+  onCopy?: (text: string, id: string) => void;
+  copied?: string | null;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-[12px] font-semibold text-ink">{e.name}</p>
+          <span className="chip mt-1 px-1.5 py-0 text-[9.5px]">{e.category}</span>
+        </div>
+        {e.hosted && e.url ? (
+          <Button size="sm" variant="ghost" onClick={() => onUse(e.url!, e.name)} className="shrink-0">
+            Use
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="shrink-0"
+            onClick={() => onCopy?.(bridgeCommand(e.command ?? ""), e.name)}
+          >
+            {copied === e.name ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            Bridge
+          </Button>
+        )}
+      </div>
+      <p className="mt-1 text-[10.5px] leading-relaxed text-muted">{e.note}</p>
+      {!e.hosted && e.command && (
+        <pre className="scroll-thin mt-1.5 max-h-24 overflow-auto rounded-lg bg-black/30 p-1.5 font-mono text-[9.5px] leading-relaxed text-muted">
+          {e.command}
+        </pre>
+      )}
     </div>
   );
 }

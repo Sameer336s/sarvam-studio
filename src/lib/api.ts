@@ -27,6 +27,8 @@ export type StreamEvent = {
   reasoning?: string;
   done?: boolean;
   error?: string;
+  /** Provider stop reason, e.g. "stop", "length", "max_tokens". */
+  finish?: string;
   toolCalls?: ToolCall[];
   usage?: { prompt?: number; completion?: number };
 };
@@ -342,11 +344,14 @@ async function* readSse(
             if (json.delta?.type === "thinking_delta" && json.delta.thinking)
               yield { reasoning: json.delta.thinking };
           }
-          if (json.type === "message_delta" && json.usage) {
-            yield { usage: { completion: json.usage.output_tokens } };
+          if (json.type === "message_delta") {
+            if (json.usage) yield { usage: { completion: json.usage.output_tokens } };
+            if (json.delta?.stop_reason) yield { finish: json.delta.stop_reason };
           }
         } else {
-          const delta = json.choices?.[0]?.delta;
+          const choice = json.choices?.[0];
+          if (choice?.finish_reason) yield { finish: choice.finish_reason };
+          const delta = choice?.delta;
           if (delta) {
             if (typeof delta.content === "string" && delta.content) yield { delta: delta.content };
             else if (Array.isArray(delta.content)) {

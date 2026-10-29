@@ -72,6 +72,13 @@ Version 3 is a performance and capability pass on top of v2:
 
 ## Features
 
+### Talk mode
+- **Speak your message** — the mic records up to 30 s and transcribes with Sarvam Saaras
+  (`saaras:v4`) or the browser's speech engine; auto-send or edit the transcript first.
+- **Hear replies** — a speaker toggle reads answers with the phone's voices, choosing the language
+  from the script of the text, with a rate slider.
+- Speech-to-text language picker: auto-detect plus 13 Indian languages.
+
 ### Chat
 - **Auto model** — one entry in the picker that chooses the best available model per message
   (filters on image input, tool calling and context, then prefers the provider's flagship).
@@ -127,6 +134,9 @@ reasoning models get `max_completion_tokens` and `reasoning_effort`, Sarvam v2 g
 - Everything persisted on every change — a reload never loses a message.
 
 ### MCP tools
+- **Open-source catalogue** — twelve community servers: DeepWiki, Cloudflare Docs, Context7 and GitMCP
+  connect straight from the page; Filesystem, Git, Memory, Sequential thinking, Fetch, SQLite, Puppeteer
+  and GitHub come with a copy-ready `supergateway` bridge command.
 - Real MCP client: `initialize` → `notifications/initialized` → `tools/list` → `tools/call`.
 - Tools are handed to the model as native function tools; results feed a streamed follow-up answer.
 - Tool calls render inline with server, arguments, result and latency.

@@ -1,7 +1,9 @@
 package ai.sarvam.studio;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
@@ -12,6 +14,7 @@ import android.view.ViewGroup;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.PermissionRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -31,11 +34,15 @@ public class MainActivity extends Activity {
     private static final String APP_URL = "file:///android_asset/www/index.html";
     private static final int BG = Color.parseColor("#06060A");
     private static final int REQ_PICK_FILE = 1001;
+    private static final int REQ_MIC = 1002;
 
     private WebView web;
 
     /** Pending callback from <input type="file">. Must be answered exactly once. */
     private ValueCallback<Uri[]> fileCallback;
+
+    /** Pending getUserMedia(audio) request from the page. */
+    private PermissionRequest micRequest;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -84,6 +91,37 @@ public class MainActivity extends Activity {
          * the APK while working fine in a desktop browser.
          */
         web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onPermissionRequest(final PermissionRequest request) {
+                // Anonymous Runnable, not a lambda: d8 would need the lambda stubs jar to desugar.
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        boolean wantsAudio = false;
+                        for (String res : request.getResources()) {
+                            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(res)) wantsAudio = true;
+                        }
+                        if (!wantsAudio) {
+                            request.deny();
+                            return;
+                        }
+                        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                                == PackageManager.PERMISSION_GRANTED) {
+                            request.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+                        } else {
+                            micRequest = request;
+                            requestPermissions(
+                                    new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+                        }
+                    }
+                });
+            }
+
+            @Override
+            public void onPermissionRequestCanceled(PermissionRequest request) {
+                if (micRequest == request) micRequest = null;
+            }
+
             @Override
             public boolean onShowFileChooser(
                     WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
@@ -152,6 +190,20 @@ public class MainActivity extends Activity {
         setContentView(root);
 
         web.loadUrl(APP_URL);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        if (requestCode == REQ_MIC && micRequest != null) {
+            if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) {
+                micRequest.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+            } else {
+                micRequest.deny();
+            }
+            micRequest = null;
+            return;
+        }
+        super.onRequestPermissionsResult(requestCode, permissions, results);
     }
 
     @Override

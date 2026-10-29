@@ -3,6 +3,8 @@ import { useApp } from "@/lib/store";
 import { DEFAULT_PARAMS, DEFAULT_SYSTEM_PROMPT, type ModelParams } from "@/lib/types";
 import { Button, Card, Field, Select, Slider, Switch, Textarea } from "@/components/ui";
 import { MaxTokensField } from "@/components/MaxTokensField";
+import { speak, sttEngine, ttsAvailable } from "@/lib/voice";
+import { toast } from "@/components/Toast";
 
 const PROMPT_PRESETS: { name: string; value: string }[] = [
   { name: "Balanced assistant", value: DEFAULT_SYSTEM_PROMPT },
@@ -29,7 +31,7 @@ const PROMPT_PRESETS: { name: string; value: string }[] = [
 ];
 
 export function ChatPanel() {
-  const { settings, patchSettings, visibleModels } = useApp();
+  const { settings, patchSettings, visibleModels, keys } = useApp();
 
   const patchParams = (patch: Partial<ModelParams>) =>
     patchSettings({ params: { ...settings.params, ...patch } });
@@ -111,6 +113,34 @@ export function ChatPanel() {
             onChange={(v) => patchParams({ maxTokens: v })}
           />
         </div>
+        <div className="mt-1">
+          <label className="label">When set to Auto, send</label>
+          <div className="flex overflow-hidden rounded-lg border border-white/10">
+            {[
+              { id: "max", label: "Model maximum", hint: "biggest reply the model allows" },
+              { id: "balanced", label: "Balanced (4K)", hint: "cheaper, faster" },
+            ].map((o) => (
+              <button
+                key={o.id}
+                onClick={() => patchSettings({ autoMaxTokens: o.id as "max" | "balanced" })}
+                title={o.hint}
+                className={
+                  "flex-1 px-3 py-1.5 text-[11.5px] font-medium transition-colors " +
+                  (settings.autoMaxTokens === o.id
+                    ? "bg-accent text-white"
+                    : "text-muted hover:bg-white/8 hover:text-ink")
+                }
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-[10.5px] leading-relaxed text-muted">
+            Reasoning models spend output tokens thinking, so the maximum is the safe default — a
+            small budget is what cuts a reply off mid-sentence.
+          </p>
+        </div>
+
         <div className="grid grid-cols-2 gap-3 pt-2">
           <Field label="Presence penalty">
             <input
@@ -222,6 +252,80 @@ export function ChatPanel() {
             onChange={(v) => patchSettings({ contextMessages: v })}
           />
         </div>
+      </Card>
+
+      <Card
+        title="Talk mode"
+        subtitle="Speak your messages, hear the replies. Speech-to-text uses your Sarvam key (Saaras); replies use the phone's own voice."
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="chip gap-1">
+            {sttEngine(!!keys["p:sarvam"]?.key) === "sarvam"
+              ? "Sarvam Saaras ready"
+              : sttEngine(false) === "browser"
+                ? "Browser speech engine"
+                : "No speech input"}
+          </span>
+          <span className="chip gap-1">{ttsAvailable() ? "Voice output ready" : "No voice output"}</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!ttsAvailable()}
+            onClick={() => {
+              const ok = speak("Namaste, main aapki madad ke liye taiyaar hoon.", {
+                rate: settings.voiceRate,
+                lang: "hi-IN",
+              });
+              if (!ok) toast("This device has no speech engine", "warn");
+            }}
+          >
+            Test voice
+          </Button>
+        </div>
+
+        <Switch
+          label="Read replies aloud"
+          hint="Speaks each finished answer with the phone's voice, in the language it was written in."
+          checked={settings.speakReplies}
+          onChange={(v) => patchSettings({ speakReplies: v })}
+        />
+        <Switch
+          label="Send as soon as I stop talking"
+          hint="Off = the transcript lands in the composer so you can edit it first."
+          checked={settings.talkAutoSend}
+          onChange={(v) => patchSettings({ talkAutoSend: v })}
+        />
+        <Slider
+          label="Speaking rate"
+          value={settings.voiceRate}
+          min={0.6}
+          max={1.8}
+          step={0.05}
+          onChange={(v) => patchSettings({ voiceRate: v })}
+          suffix="x"
+        />
+        <Field label="Speech-to-text language" hint="“Auto detect” works well for mixed Hindi/English.">
+          <Select
+            value={settings.sttLanguage}
+            onChange={(v) => patchSettings({ sttLanguage: v })}
+            options={[
+              { value: "unknown", label: "Auto detect" },
+              { value: "hi-IN", label: "Hindi" },
+              { value: "en-IN", label: "English (India)" },
+              { value: "bn-IN", label: "Bengali" },
+              { value: "mr-IN", label: "Marathi" },
+              { value: "ta-IN", label: "Tamil" },
+              { value: "te-IN", label: "Telugu" },
+              { value: "gu-IN", label: "Gujarati" },
+              { value: "kn-IN", label: "Kannada" },
+              { value: "ml-IN", label: "Malayalam" },
+              { value: "pa-IN", label: "Punjabi" },
+              { value: "od-IN", label: "Odia" },
+              { value: "as-IN", label: "Assamese" },
+              { value: "ur-IN", label: "Urdu" },
+            ]}
+          />
+        </Field>
       </Card>
     </div>
   );

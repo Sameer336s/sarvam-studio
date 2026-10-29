@@ -1,5 +1,38 @@
 # Changelog
 
+## 3.3.0 — October 2026
+
+### Fixed — the "stream was interrupted" bug
+- **Stop reason is now read.** OpenAI-style `finish_reason` and Anthropic `stop_reason` were being
+  ignored, so a reply cut off by the output budget looked like a network failure. It now says
+  "Reply was cut at the output limit" and offers a **Continue** button.
+- **One silent retry.** If the connection dies before any text arrives, the request is retried once
+  automatically instead of surfacing an error immediately.
+- **Real output budgets.** The Sarvam v2 reasoning models (GLM-5.3, DeepSeek V4.1 Flash, Gemma 4) had
+  8,192 output tokens in the catalogue — reasoning alone could eat that and truncate the answer. They
+  now carry 32,768.
+- New setting: **Auto sends the model maximum** (default) or a balanced 4K, so "Auto" means the
+  biggest budget the model allows unless you choose otherwise.
+
+### Added — talk mode
+- **Speak your message.** Mic button in the composer records up to 30 s and transcribes it — with
+  Sarvam **Saaras** (`saaras:v4`) when a Sarvam key is present, or the browser's own speech engine
+  otherwise. Auto-send on stop, or drop the transcript into the composer to edit.
+- **Hear the reply.** Speaker toggle reads answers aloud using the phone's own voices, picking the
+  language from the script of the text (Devanagari → Hindi, Tamil → Tamil…), with a speaking-rate
+  slider and a "Test voice" button.
+- Speech-to-text language picker (auto-detect plus 13 Indian languages).
+
+### Added — open-source MCP catalogue
+- Twelve community MCP servers listed in Settings → MCP tools: DeepWiki, Cloudflare Docs, Context7 and
+  GitMCP connect straight from the page; Filesystem, Git, Memory, Sequential thinking, Fetch, SQLite,
+  Puppeteer and GitHub ship with their `npx` command and a copy-ready **bridge** command
+  (`supergateway`) that turns a stdio server into an HTTP endpoint this app can reach.
+
+### Android
+- `RECORD_AUDIO` permission plus `onPermissionRequest` handling, so `getUserMedia` works in the
+  WebView after the system permission dialog.
+
 ## 3.2.0 — October 2026
 
 Built to feel like a consumer assistant app rather than a developer console — still with no
