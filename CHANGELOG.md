@@ -1,5 +1,35 @@
 # Changelog
 
+## 3.4.0 — October 2026
+
+### Added — Mocha & gold theme (default)
+- New **warm palette** built from the colours you asked for: mocha brown `#5B4632` surfaces,
+  champagne gold `#F4D9A0` and burnt amber `#C8792C` accents. Warm is now the default in both dark and
+  light; the old graphite look is still one tap away under Appearance → Palette.
+
+### Added — multitasking
+- **Several chats can answer at once.** Each conversation keeps its own stream and its own stop
+  button, so you can send a long request, switch chats, and keep working. A small pill above the
+  composer shows how many chats are running with a **Stop all**.
+- Per-chat guard: sending twice into the *same* chat is still blocked, but other chats are free.
+
+### Added — voice mode (ChatGPT style)
+- A hands-free, full-screen voice mode: it listens, transcribes, sends, speaks the answer, and starts
+  listening again. Tap **Send now** to end a turn early, **Skip** to cut the speech, **End** to leave.
+- Fixed 9-second turn window (no VAD), so it behaves predictably on phones.
+
+### Changed
+- Output budgets raised again: Sarvam-105B now 32,768 (was 8,192) and its conversations variant 8,192.
+- **Recommended setup** button in Settings → Chat & models applies the baseline this app is tuned for
+  (Auto model, model maximum output, temp 0.70, top-p 0.95, 30 context messages).
+- Three more free/OSS providers in one click: **NVIDIA NIM**, **Fireworks AI**, **SambaNova**.
+- Two more open-source MCP servers: **Time** and the **Everything** reference server.
+- Composer respects the phone's gesture bar (`env(safe-area-inset-bottom)`).
+
+### Fixed
+- Code blocks were unreadable in the light theme (dark surface, dark text).
+- The voice-mode sheet was see-through because `--bg-0` is a hex value and cannot be wrapped in `rgb()`.
+
 ## 3.3.1 — October 2026
 
 ### Fixed

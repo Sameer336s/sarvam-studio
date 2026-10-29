@@ -52,6 +52,7 @@ import { AUTO_ID, pickAutoModel } from "@/lib/autoModel";
 import {
   speak,
   speakable,
+  speakAsync,
   startRecording,
   sttEngine,
   stopSpeaking,
@@ -105,8 +106,8 @@ export function ChatView({
 
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [streamingId, setStreamingId] = useState<string | null>(null);
+  /** One entry per chat that is currently streaming, so several chats can run at once. */
+  const [runs, setRuns] = useState<Record<string, { asstId: string }>>({});
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [paramsOpen, setParamsOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -114,8 +115,20 @@ export function ChatView({
   const [recorder, setRecorder] = useState<Recorder | null>(null);
   const [recSecs, setRecSecs] = useState(0);
   const [transcribing, setTranscribing] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [voiceState, setVoiceState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
+  const [voiceLine, setVoiceLine] = useState("");
 
-  const abortRef = useRef<AbortController | null>(null);
+  const busy = !!(active?.id && runs[active.id]);
+  const streamingId = active?.id ? runs[active.id]?.asstId ?? null : null;
+  const anyRunning = Object.keys(runs).length > 0;
+
+  const aborts = useRef<Record<string, AbortController>>({});
+  const voiceModeRef = useRef(false);
+  voiceModeRef.current = voiceMode;
+  const autoStopRef = useRef<number | null>(null);
+  const activeIdRef = useRef<string | null>(active?.id ?? null);
+  activeIdRef.current = active?.id ?? null;
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -192,7 +205,12 @@ export function ChatView({
       const resolved = displayModel;
       const text = (textArg ?? input).trim();
       const atts = textArg ? [] : attachments;
-      if ((!text && atts.length === 0) || busy) return;
+      if (!text && atts.length === 0) return;
+      const targetChat = storeRef.current.activeId;
+      if (targetChat && runsRef.current[targetChat]) {
+        toast("This chat is still answering — wait or stop it first.", "warn");
+        return;
+      }
       if (!resolved) {
         toast("Pick a model first — or add a key so Auto can choose one.", "warn");
         onOpenSettings();
@@ -284,11 +302,10 @@ export function ChatView({
         ),
       );
 
-      setBusy(true);
-      setStreamingId(asstId);
+      setRuns((r) => ({ ...r, [chatId]: { asstId } }));
       stickToBottom.current = true;
       const ctrl = new AbortController();
-      abortRef.current = ctrl;
+      aborts.current[chatId] = ctrl;
 
       /* --- rAF-batched patching: one React update per frame, not per token --- */
       let pendingContent = "";
@@ -493,7 +510,7 @@ export function ChatView({
         if (usage) storeRef.current.updateMessage(chatId, asstId, { usage });
         if (ctrl.signal.aborted) storeRef.current.updateMessage(chatId, asstId, { stopped: true });
 
-        if (live.settings.speakReplies && pendingContent) {
+        if (live.settings.speakReplies && pendingContent && !voiceModeRef.current) {
           speak(pendingContent, { rate: live.settings.voiceRate });
         }
       } catch (e) {
@@ -509,19 +526,28 @@ export function ChatView({
         }
       } finally {
         if (frame !== null) cancelAnimationFrame(frame);
-        setBusy(false);
-        setStreamingId(null);
-        abortRef.current = null;
+        delete aborts.current[chatId];
+        setRuns((r) => {
+          const next = { ...r };
+          delete next[chatId];
+          return next;
+        });
+        if (chatId === activeIdRef.current) stickToBottom.current = true;
       }
     },
     // callbacks below are stable (storeRef), so only these change identity
-    [input, attachments, busy, displayModel, tools, onOpenSettings],
+    [input, attachments, displayModel, tools, onOpenSettings],
   );
 
   const stop = () => {
-    abortRef.current?.abort();
-    setBusy(false);
-    setStreamingId(null);
+    const id = storeRef.current.activeId;
+    if (id) aborts.current[id]?.abort();
+  };
+
+  /** Stop every chat that is still streaming (multitasking needs a way out). */
+  const stopAll = () => {
+    Object.values(aborts.current).forEach((c) => c.abort());
+    setRuns({});
   };
 
   const regenerate = useCallback((msgId: string) => {
@@ -537,6 +563,8 @@ export function ChatView({
 
   const busyRef = useRef(busy);
   busyRef.current = busy;
+  const runsRef = useRef(runs);
+  runsRef.current = runs;
   const sendRef = useRef(runSend);
   sendRef.current = runSend;
 
@@ -609,6 +637,89 @@ export function ChatView({
     } finally {
       setTranscribing(false);
     }
+  };
+
+  /* ------------------------------------------------- voice mode (hands-free) */
+  const lastAssistantText = () => {
+    const live = storeRef.current;
+    const conv = live.conversations.find((c) => c.id === live.activeId);
+    const last = [...(conv?.messages ?? [])].reverse().find((m) => m.role === "assistant");
+    return last?.content ?? "";
+  };
+
+  const listenOnce = useCallback(async () => {
+    if (!voiceModeRef.current) return;
+    stopSpeaking();
+    setVoiceState("listening");
+    setVoiceLine("");
+    try {
+      const rec = await startRecording(15000);
+      setRecorder(rec);
+      setRecSecs(0);
+      // Turn-taking without a VAD: give the speaker a fixed window.
+      if (autoStopRef.current) window.clearTimeout(autoStopRef.current);
+      autoStopRef.current = window.setTimeout(() => {
+        void finishTurn(rec);
+      }, 9000);
+    } catch (e) {
+      setVoiceState("idle");
+      toast((e as Error).message || "Microphone unavailable", "warn");
+    }
+  }, []);
+
+  const finishTurn = useCallback(async (rec: Recorder) => {
+    if (autoStopRef.current) window.clearTimeout(autoStopRef.current);
+    setRecorder(null);
+    setRecSecs(0);
+    const blob = await rec.stop();
+    if (blob.size < 1200) {
+      if (voiceModeRef.current) void listenOnce();
+      return;
+    }
+    setVoiceState("thinking");
+    const live = storeRef.current;
+    const key = live.keyFor("sarvam");
+    try {
+      const lang = live.settings.sttLanguage;
+      const text =
+        sttEngine(!!key) === "sarvam"
+          ? (await transcribeSarvam(blob, key, lang)).text
+          : await transcribeBrowser(lang);
+      if (!text) {
+        if (voiceModeRef.current) void listenOnce();
+        return;
+      }
+      setVoiceLine(text);
+      await sendRef.current(text);
+      if (!voiceModeRef.current) {
+        setVoiceState("idle");
+        return;
+      }
+      setVoiceState("speaking");
+      await speakAsync(lastAssistantText(), { rate: live.settings.voiceRate });
+      if (voiceModeRef.current) void listenOnce();
+      else setVoiceState("idle");
+    } catch (e) {
+      setVoiceState("idle");
+      toast((e as Error).message || "Voice turn failed", "warn");
+    }
+  }, [listenOnce]);
+
+  const enterVoice = () => {
+    if (!storeRef.current.settings.speakReplies) storeRef.current.patchSettings({ speakReplies: true });
+    setVoiceMode(true);
+    setTimeout(() => void listenOnce(), 150);
+  };
+
+  const exitVoice = () => {
+    voiceModeRef.current = false;
+    setVoiceMode(false);
+    setVoiceState("idle");
+    stopSpeaking();
+    if (autoStopRef.current) window.clearTimeout(autoStopRef.current);
+    if (recorder) recorder.cancel();
+    setRecorder(null);
+    setRecSecs(0);
   };
 
   const continueReply = useCallback((id: string) => {
@@ -804,6 +915,22 @@ export function ChatView({
             </div>
           )}
 
+          {anyRunning && (
+            <div className="mx-auto mb-1.5 flex max-w-2xl items-center gap-2 rounded-lg border border-accent/30 bg-accent/10 px-2.5 py-1 text-[11px] text-accent">
+              <Loader2 className="h-3 w-3 spin" />
+              <span>
+                {Object.keys(runs).length} chat{Object.keys(runs).length === 1 ? "" : "s"} answering in
+                the background
+              </span>
+              <button
+                onClick={stopAll}
+                className="ml-auto rounded px-1.5 py-0.5 font-medium hover:bg-accent/20"
+              >
+                Stop all
+              </button>
+            </div>
+          )}
+
           {recorder && (
             <div className="mb-1.5 flex items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/10 px-2.5 py-1.5">
               <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
@@ -861,6 +988,13 @@ export function ChatView({
                   ) : (
                     <Mic className="h-4 w-4" />
                   )}
+                </IconButton>
+                <IconButton
+                  title="Voice mode — hands-free conversation"
+                  onClick={enterVoice}
+                  disabled={!ttsAvailable() || sttEngine(!!store.keys["p:sarvam"]?.key) === "none"}
+                >
+                  <AudioLines className="h-4 w-4" />
                 </IconButton>
                 <IconButton
                   title={settings.speakReplies ? "Stop reading replies aloud" : "Read replies aloud"}
@@ -957,6 +1091,77 @@ export function ChatView({
           }}
         />
       </Modal>
+
+      {/* voice mode: hands-free turn taking, ChatGPT style */}
+      {voiceMode && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-between sheet-solid px-6 py-10">
+          <div className="flex w-full max-w-md items-center justify-between">
+            <span className="text-[11px] uppercase tracking-[0.18em] text-muted">Voice mode</span>
+            <button onClick={exitVoice} className="btn btn-ghost px-3 py-1.5 text-[12px]">
+              <X className="h-3.5 w-3.5" /> End
+            </button>
+          </div>
+
+          <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
+            <div
+              className={cn(
+                "relative flex h-40 w-40 items-center justify-center rounded-full",
+                voiceState === "listening" ? "bg-accent/15" : "bg-white/5",
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute inset-0 rounded-full border",
+                  voiceState === "listening" ? "border-accent/40 animate-ping" : "border-white/10",
+                )}
+              />
+              <span
+                className="flex h-24 w-24 items-center justify-center rounded-full text-white"
+                style={{ background: "linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent-2)))" }}
+              >
+                {voiceState === "thinking" ? (
+                  <Loader2 className="h-8 w-8 spin" />
+                ) : voiceState === "speaking" ? (
+                  <Volume2 className="h-8 w-8" />
+                ) : (
+                  <Mic className="h-8 w-8" />
+                )}
+              </span>
+            </div>
+
+            <div className="min-h-[3rem] max-w-md">
+              <p className="text-[15px] font-medium text-ink">
+                {voiceState === "listening"
+                  ? "Listening…"
+                  : voiceState === "thinking"
+                    ? "Thinking…"
+                    : voiceState === "speaking"
+                      ? "Speaking…"
+                      : "Ready"}
+              </p>
+              <p className="mt-1 line-clamp-2 text-[12.5px] leading-relaxed text-muted">
+                {voiceLine || (voiceState === "listening" ? "Speak, or tap End to leave voice mode." : " ")}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                if (recorder) void finishTurn(recorder);
+                else if (voiceState === "speaking") {
+                  stopSpeaking();
+                  void listenOnce();
+                } else if (voiceState === "idle") void listenOnce();
+              }}
+              className="btn btn-accent px-6 py-3 text-[13px]"
+              disabled={voiceState === "thinking"}
+            >
+              {recorder ? "Send now" : voiceState === "speaking" ? "Skip" : "Talk"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

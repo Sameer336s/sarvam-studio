@@ -200,6 +200,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const merged = { ...DEFAULT_SETTINGS, ...(stored as Partial<Settings>), params };
     if (!["plain", "mesh", "grid"].includes(merged.bgStyle as string)) merged.bgStyle = "plain";
     if (!["sans", "serif", "mono"].includes(merged.fontFamily as string)) merged.fontFamily = "sans";
+    if (!["neutral", "warm"].includes(merged.palette as string)) merged.palette = "warm";
     if (!["dark", "light", "system"].includes(merged.theme as string)) merged.theme = "dark";
     delete (merged as Record<string, unknown>).temperature;
     delete (merged as Record<string, unknown>).topP;
@@ -289,6 +290,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (Number.isNaN(n)) return "139 92 246";
       return `${(n >> 16) & 255} ${(n >> 8) & 255} ${n & 255}`;
     };
+    root.dataset.palette = settings.palette === "warm" ? "warm" : "neutral";
     root.style.setProperty("--accent", hexToRgb(settings.accent));
     root.style.setProperty("--accent-2", hexToRgb(settings.accent2));
     root.style.setProperty("--surface-mix", String(settings.surfaceMix));

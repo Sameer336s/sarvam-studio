@@ -360,6 +360,22 @@ export const OPEN_SOURCE_MCP: McpCatalogEntry[] = [
     hosted: false,
   },
   {
+    name: "Time",
+    category: "utility",
+    command: "npx -y mcp-server-time",
+    bridgedUrl: "http://localhost:8000/mcp",
+    note: "Timezones and current time — the one thing models always get wrong.",
+    hosted: false,
+  },
+  {
+    name: "Everything (reference)",
+    category: "utility",
+    command: "npx -y @modelcontextprotocol/server-everything",
+    bridgedUrl: "http://localhost:8000/mcp",
+    note: "The reference server: prompts, resources and a dozen demo tools. Good for testing a bridge.",
+    hosted: false,
+  },
+  {
     name: "GitHub",
     category: "code",
     command: "npx -y @modelcontextprotocol/server-github",

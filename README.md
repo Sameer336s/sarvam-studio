@@ -80,6 +80,12 @@ Version 3 is a performance and capability pass on top of v2:
   from the script of the text, with a rate slider.
 - Speech-to-text language picker: auto-detect plus 13 Indian languages.
 
+### Multitasking and voice mode
+- **Several chats answer at once** — each conversation keeps its own stream, with a running count and
+  a Stop all above the composer.
+- **Voice mode** — hands-free listen → transcribe → send → speak loop in a full-screen sheet, plus a
+  per-message mic and a read-aloud toggle.
+
 ### Chat
 - **Auto model** — one entry in the picker that chooses the best available model per message
   (filters on image input, tool calling and context, then prefers the provider's flagship).
@@ -144,6 +150,8 @@ reasoning models get `max_completion_tokens` and `reasoning_effort`, Sarvam v2 g
 - Per-server enable/disable, auth headers, and **auto-approve** (off by default).
 
 ### Appearance
+- **Mocha & gold palette** (mocha `#5B4632` surfaces, champagne `#F4D9A0`, burnt amber `#C8792C`) or
+  neutral graphite — in dark and light.
 - Dark / light / system, seven accent presets or any hex pair, three background styles.
 - Live controls for surface contrast, border strength, corner radius, font size, chat width, typeface,
   density, message style, avatars, timestamps and animations.

@@ -313,6 +313,38 @@ export function speak(text: string, opts: { rate?: number; lang?: string } = {})
   return true;
 }
 
+/** speak() that resolves when the voice has finished — needed for turn taking. */
+export function speakAsync(text: string, opts: { rate?: number; lang?: string } = {}): Promise<void> {
+  return new Promise((resolve) => {
+    if (!ttsAvailable()) return resolve();
+    const clean = speakable(text);
+    if (!clean) return resolve();
+
+    const synth = globalThis.speechSynthesis;
+    synth.cancel();
+    const utter = new SpeechSynthesisUtterance(clean.slice(0, 4000));
+    const lang = opts.lang || detectLang(text);
+    utter.lang = lang;
+    utter.rate = Math.min(2, Math.max(0.5, opts.rate ?? 1));
+    const voices = synth.getVoices();
+    const exact = voices.find((v) => v.lang === lang);
+    const prefix = voices.find((v) => v.lang?.startsWith(lang.split("-")[0]));
+    if (exact || prefix) utter.voice = (exact ?? prefix)!;
+
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    utter.onend = done;
+    utter.onerror = done;
+    // Safety net: some engines never fire onend for long text.
+    setTimeout(done, Math.min(60000, 1500 + clean.length * 65));
+    synth.speak(utter);
+  });
+}
+
 export function listVoices(): { name: string; lang: string }[] {
   if (!ttsAvailable()) return [];
   return globalThis.speechSynthesis.getVoices().map((v) => ({ name: v.name, lang: v.lang }));

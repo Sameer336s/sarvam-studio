@@ -63,6 +63,42 @@ export function AppearancePanel() {
         </div>
       </Card>
 
+      <Card
+        title="Palette"
+        subtitle="Warm uses mocha-brown surfaces with champagne and amber accents; neutral is graphite."
+      >
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { id: "warm", label: "Mocha & gold", hint: "#5B4632 · #F4D9A0 · #C8792C" },
+            { id: "neutral", label: "Neutral", hint: "graphite surfaces" },
+          ].map((p) => (
+            <button
+              key={p.id}
+              onClick={() => patchSettings({ palette: p.id as "warm" | "neutral" })}
+              className={cn(
+                "rounded-xl border px-3 py-2 text-left transition",
+                settings.palette === p.id
+                  ? "border-accent/50 bg-accent/10"
+                  : "border-white/10 hover:bg-white/6",
+              )}
+            >
+              <span className="block text-[12px] font-medium text-ink">{p.label}</span>
+              <span className="block text-[10px] text-muted">{p.hint}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 flex gap-1.5">
+          {["#5B4632", "#F4D9A0", "#C8792C"].map((c) => (
+            <span
+              key={c}
+              className="h-6 flex-1 rounded-md border border-white/15"
+              style={{ background: c }}
+              title={c}
+            />
+          ))}
+        </div>
+      </Card>
+
       <Card title="Accent colour" subtitle="Drives buttons, highlights, gradients and glows.">
         <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
           {ACCENT_PRESETS.map((p) => {
@@ -71,7 +107,13 @@ export function AppearancePanel() {
               <button
                 key={p.name}
                 title={p.name}
-                onClick={() => patchSettings({ accent: p.accent, accent2: p.accent2 })}
+                onClick={() =>
+                  patchSettings({
+                    accent: p.accent,
+                    accent2: p.accent2,
+                    ...(p.palette ? { palette: p.palette } : {}),
+                  })
+                }
                 className={cn(
                   "relative flex h-11 items-center justify-center rounded-xl border transition",
                   active ? "border-white/60" : "border-white/10 hover:border-white/30",

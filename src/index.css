@@ -50,6 +50,29 @@ html.light {
   color-scheme: light;
 }
 
+/* Mocha / champagne / amber: warm brown surfaces instead of graphite. */
+html.dark[data-palette="warm"] {
+  --bg-0: #17110c;
+  --bg-1: #1f1811;
+  --panel: #2a211a;
+  --panel-2: #33291f;
+  --fg: 246 238 228;
+  --muted: 186 168 146;
+  --border: 255 236 210;
+  --shadow-color: 12 6 2;
+}
+
+html.light[data-palette="warm"] {
+  --bg-0: #faf5ee;
+  --bg-1: #fffdf8;
+  --panel: #fffdf9;
+  --panel-2: #f6ece0;
+  --fg: 43 32 22;
+  --muted: 124 104 84;
+  --border: 92 70 50;
+  --shadow-color: 92 70 50;
+}
+
 * {
   border-color: rgb(var(--border) / var(--border-strength));
 }
@@ -342,6 +365,8 @@ input[type="range"]::-moz-range-thumb {
   margin: 0;
   padding: 0.85rem 0.95rem;
   overflow-x: auto;
+  /* code blocks keep a dark surface in both themes, so their text is always light */
+  color: #efe9e0;
   font-family: var(--font-mono);
   font-size: 0.84rem;
   line-height: 1.55;
@@ -463,4 +488,9 @@ html[data-animations="off"] .rise {
   .stream-caret::after {
     animation: none !important;
   }
+}
+
+/* Full-screen sheet: --bg-0 is a hex value, so it must be used directly (not in rgb()). */
+.sheet-solid {
+  background: var(--bg-0);
 }

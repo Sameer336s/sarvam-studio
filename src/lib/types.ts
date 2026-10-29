@@ -110,6 +110,8 @@ export const DEFAULT_PARAMS: ModelParams = {
 
 export type Settings = {
   theme: "dark" | "light" | "system";
+  /** neutral = graphite/greys, warm = mocha brown surfaces */
+  palette: "neutral" | "warm";
   accent: string;
   accent2: string;
   bgStyle: "plain" | "mesh" | "grid";
@@ -152,8 +154,9 @@ export const DEFAULT_SYSTEM_PROMPT =
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: "dark",
-  accent: "#6366f1",
-  accent2: "#8b5cf6",
+  palette: "warm",
+  accent: "#C8792C",
+  accent2: "#F4D9A0",
   bgStyle: "plain",
   surfaceMix: 1,
   borderStrength: 0.12,
@@ -185,7 +188,13 @@ export const DEFAULT_SETTINGS: Settings = {
   talkAutoSend: true,
 };
 
-export const ACCENT_PRESETS: { name: string; accent: string; accent2: string }[] = [
+export const ACCENT_PRESETS: {
+  name: string;
+  accent: string;
+  accent2: string;
+  palette?: "warm" | "neutral";
+}[] = [
+  { name: "Mocha Gold", accent: "#C8792C", accent2: "#F4D9A0", palette: "warm" },
   { name: "Indigo", accent: "#6366f1", accent2: "#8b5cf6" },
   { name: "Saffron", accent: "#ea580c", accent2: "#f59e0b" },
   { name: "Emerald", accent: "#059669", accent2: "#10b981" },
