@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { DEFAULT_MODELS, PROVIDERS, type ModelDef, type ProviderId } from "@/lib/catalog";
+import { AUTO_ID, pickAutoModel } from "@/lib/autoModel";
 import type { McpServer } from "@/lib/mcp";
 import {
   DEFAULT_PARAMS,
@@ -124,6 +125,8 @@ export type Store = {
   keys: Record<string, KeyInfo>;
 
   activeModel: ModelDef | null;
+  /** Model that "Auto" would choose right now (no attachments/tools considered). */
+  autoModel: ModelDef | null;
   modelById: (id: string) => ModelDef | undefined;
   keyFor: (provider: ProviderId, customId?: string) => string;
 
@@ -329,6 +332,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     return models.find((m) => m.id === settings.defaultModelId) ?? visibleModels[0] ?? null;
   }, [active, models, settings.defaultModelId, visibleModels]);
+
+  const autoModel = useMemo(
+    () => pickAutoModel(models, keys, customProviders, {})?.model ?? null,
+    [models, keys, customProviders],
+  );
 
   const keyFor = useCallback(
     (provider: ProviderId, customId?: string) => {
@@ -600,6 +608,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     settings,
     keys,
     activeModel,
+    autoModel,
     modelById,
     keyFor,
     newChat,

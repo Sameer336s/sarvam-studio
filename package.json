@@ -1,7 +1,7 @@
 {
   "name": "sarvam-studio",
   "private": true,
-  "version": "3.1.0",
+  "version": "3.2.0",
   "type": "module",
   "description": "Fast, flat, multi-model AI chat app for Sarvam AI, OpenAI, Anthropic, Gemini and any OpenAI-compatible endpoint \u2014 image/file attachments, MCP tools, free open-source model presets, encrypted keys that survive a restart.",
   "scripts": {

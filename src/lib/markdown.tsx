@@ -85,7 +85,8 @@ type Block = { kind: "code"; code: string; lang?: string } | { kind: "text"; lin
 
 function splitBlocks(src: string): Block[] {
   const blocks: Block[] = [];
-  const fence = /```([\w+-]*)\n?([\s\S]*?)(?:```|$)/g;
+  // ```lang [filename]\n… — the optional file name is metadata, not code
+  const fence = /```([\w+#.-]*)(?:[ \t]+[^\n`]*)?\n([\s\S]*?)(?:```|$)/g;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = fence.exec(src))) {

@@ -73,6 +73,9 @@ Version 3 is a performance and capability pass on top of v2:
 ## Features
 
 ### Chat
+- **Auto model** — one entry in the picker that chooses the best available model per message
+  (filters on image input, tool calling and context, then prefers the provider's flagship).
+- **File cards** on replies: every code block becomes a real file with Download · Open · Share.
 - Token streaming batched per animation frame, with a stop button and per-message regenerate.
 - Markdown written for this app: headings, lists, tables, blockquotes, inline code, fenced code blocks
   with a copy button — rendered to React elements, never `dangerouslySetInnerHTML`.
@@ -85,6 +88,8 @@ Version 3 is a performance and capability pass on top of v2:
   in the browser (a 6 MB photo becomes ~150 KB) before they are stored or sent.
 - **Send text files** — `.txt`, `.md`, `.json`, `.csv`, code files and similar are read as text and
   inlined into the prompt, so even text-only models can use them.
+- **Send a `.zip`** — text and code files inside it are extracted in the browser and inlined
+  (up to 25 files / 400 KB); binaries inside the archive are skipped.
 - **Receive images** — anything the model returns as an image renders inline (Markdown images, array
   content parts, `images[]`), with a click-to-zoom lightbox and a download button.
 - Attachments are persisted with the message; if storage runs out, image payloads are shed first so the

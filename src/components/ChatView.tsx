@@ -43,6 +43,8 @@ import {
 import { cn, fmtTime, uuid } from "@/lib/cn";
 import { Button, IconButton, Modal, Select, Slider, Switch } from "@/components/ui";
 import { ModelPicker } from "@/components/ModelPicker";
+import { ArtifactBar } from "@/components/ArtifactBar";
+import { AUTO_ID, pickAutoModel } from "@/lib/autoModel";
 import { MaxTokensField } from "@/components/MaxTokensField";
 import { toast } from "@/components/Toast";
 import { PROVIDERS } from "@/lib/catalog";
@@ -105,7 +107,14 @@ export function ChatView({
   const storeRef = useRef(store);
   storeRef.current = store;
 
-  const model = store.modelById(modelId) ?? store.activeModel ?? store.visibleModels[0];
+  const isAuto = modelId === AUTO_ID;
+  const autoPick = useMemo(
+    () => pickAutoModel(store.visibleModels, store.keys, customProviders, {}),
+    [store.visibleModels, store.keys, customProviders],
+  );
+  const displayModel = isAuto
+    ? autoPick?.model ?? null
+    : store.modelById(modelId) ?? store.activeModel ?? store.visibleModels[0];
   const tools = useMemo(() => bindTools(mcpServers), [mcpServers]);
   const messages = active?.messages ?? [];
   const lastMsg = messages[messages.length - 1];
@@ -162,15 +171,39 @@ export function ChatView({
   /* ------------------------------------------------------------------ send */
   const runSend = useCallback(
     async (textArg?: string) => {
+      const resolved = displayModel;
       const text = (textArg ?? input).trim();
       const atts = textArg ? [] : attachments;
       if ((!text && atts.length === 0) || busy) return;
-      if (!model) {
-        toast("Pick a model first.", "warn");
+      if (!resolved) {
+        toast("Pick a model first — or add a key so Auto can choose one.", "warn");
+        onOpenSettings();
         return;
       }
 
       const live = storeRef.current;
+      let model = resolved; // may be re-picked below when Auto is on
+      const needs = {
+        vision: atts.some((a) => a.kind === "image"),
+        tools: tools.length > 0,
+        approxTokens: Math.round(
+          (live.conversations.find((c) => c.id === live.activeId)?.messages ?? [])
+            .slice(-20)
+            .reduce((n, m) => n + m.content.length, 0) / 4,
+        ),
+      };
+      if (modelId === AUTO_ID) {
+        const picked = pickAutoModel(live.visibleModels, live.keys, live.customProviders, needs);
+        if (!picked) {
+          toast("Auto needs at least one model with a key. Add one in Settings → API keys.", "warn");
+          onOpenSettings();
+          return;
+        }
+        model = picked.model;
+        if (picked.model.id !== resolved?.id) {
+          toast(`Auto → ${picked.model.name} (${picked.reason})`, "info");
+        }
+      }
       const endpointCfg = customEndpointFor(model, live.customProviders);
       const apiKey = live.keyFor(model.provider, model.providerRef);
       if (!apiKey && model.provider !== "custom") {
@@ -185,7 +218,7 @@ export function ChatView({
       }
 
       let chatId = live.activeId;
-      if (!chatId) chatId = live.newChat(model.id);
+      if (!chatId) chatId = live.newChat(modelId === AUTO_ID ? AUTO_ID : model.id);
       const conv = live.conversations.find((c) => c.id === chatId);
       const history = conv?.messages ?? [];
       const chatParams: ModelParams = { ...live.settings.params, ...(conv?.params ?? {}) };
@@ -419,7 +452,7 @@ export function ChatView({
       }
     },
     // callbacks below are stable (storeRef), so only these change identity
-    [input, attachments, busy, model, tools, onOpenSettings],
+    [input, attachments, busy, displayModel, tools, onOpenSettings],
   );
 
   const stop = () => {
@@ -538,7 +571,7 @@ export function ChatView({
               What should we build today?
             </h1>
             <p className="mt-1.5 max-w-md text-center text-[12.5px] leading-relaxed text-muted">
-              {model ? `${model.name} · ${PROVIDERS[model.provider].name}` : "Pick a model"} — send text,
+              {displayModel ? `${displayModel.name} · ${PROVIDERS[displayModel.provider].name}` : "Pick a model"} — send text,
               images or files
               {tools.length > 0 ? `, with ${tools.length} MCP tool${tools.length === 1 ? "" : "s"} ready` : ""}.
             </p>
@@ -637,13 +670,13 @@ export function ChatView({
               onKeyDown={onKeyDown}
               onPaste={onPaste}
               rows={1}
-              placeholder={model ? `Message ${model.name}…` : "Message…"}
+              placeholder={displayModel ? `Message ${displayModel.name}…` : "Message…"}
               className="scroll-thin max-h-[240px] w-full resize-none bg-transparent px-2 py-1.5 text-[14px] leading-relaxed text-ink outline-none placeholder:text-muted/70"
               style={{ minHeight: 40 }}
             />
             <div className="flex items-center justify-between gap-1.5 px-0.5">
               <div className="flex min-w-0 items-center gap-0.5">
-                <ModelPicker value={model?.id ?? ""} onChange={onModelChange} compact />
+                <ModelPicker value={modelId} onChange={onModelChange} compact />
                 <IconButton
                   title="Attach image or file"
                   onClick={() => fileRef.current?.click()}
@@ -665,7 +698,7 @@ export function ChatView({
                   ref={fileRef}
                   type="file"
                   multiple
-                  accept="image/*,text/*,application/pdf,.md,.json,.csv,.tsv,.log,.yml,.yaml,.xml,.html,.css,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.c,.h,.cpp,.cs,.php,.sh,.sql,.ini,.toml,.pdf"
+                  accept="image/*,text/*,application/pdf,application/zip,application/x-zip-compressed,.zip,.md,.json,.csv,.tsv,.log,.yml,.yaml,.xml,.html,.css,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.c,.h,.cpp,.cs,.php,.sh,.sql,.ini,.toml,.pdf"
                   className="hidden"
                   onChange={(e) => {
                     const f = e.target.files;
@@ -701,12 +734,12 @@ export function ChatView({
           </div>
 
           <p className="mt-1.5 hidden px-1 text-center text-[10.5px] leading-relaxed text-muted/70 sm:block">
-            {model
-              ? `${model.name} · ${(model.contextWindow / 1000).toFixed(0)}K ctx · temp ${params.temperature.toFixed(
-                  2,
-                )} · out ${
+            {displayModel
+              ? `${isAuto ? "Auto → " : ""}${displayModel.name} · ${(
+                  displayModel.contextWindow / 1000
+                ).toFixed(0)}K ctx · temp ${params.temperature.toFixed(2)} · out ${
                   params.maxTokens == null
-                    ? `${model.maxTokens.toLocaleString("en-US")} (auto)`
+                    ? `${displayModel.maxTokens.toLocaleString("en-US")} (auto)`
                     : params.maxTokens.toLocaleString("en-US")
                 }`
               : "No model selected"}
@@ -718,7 +751,7 @@ export function ChatView({
       <Modal open={paramsOpen} onClose={() => setParamsOpen(false)} title="Model parameters">
         <ParamsForm
           params={params}
-          model={model ?? null}
+          model={displayModel ?? null}
           hasOverrides={hasOverrides}
           onChange={(patch) => {
             if (!active) return;
@@ -1052,6 +1085,8 @@ const MessageRow = memo(function MessageRow({
             )}
           </div>
         )}
+
+        {!isUser && !msg.error && <ArtifactBar text={msg.content} />}
 
         <div className="flex items-center gap-0.5 px-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           {settings.showTimestamps && (

@@ -75,6 +75,8 @@ public class MainActivity extends Activity {
         }
 
         web.addJavascriptInterface(new SecureBridge(this), "AndroidSecure");
+        // Blob downloads are a no-op in a WebView; generated files go through this instead.
+        web.addJavascriptInterface(new FileBridge(this), "AndroidFiles");
 
         /*
          * The file chooser MUST be wired up here. A bare `new WebChromeClient()` silently
@@ -111,6 +113,23 @@ public class MainActivity extends Activity {
                         fileCallback = null;
                         return false;
                     }
+                }
+            }
+        });
+
+        // Safety net for any ordinary http(s) download the page triggers.
+        // (An anonymous class, not a lambda: d8 would need the lambda stubs jar to desugar.)
+        web.setDownloadListener(new android.webkit.DownloadListener() {
+            @Override
+            public void onDownloadStart(String url, String userAgent, String contentDisposition,
+                                        String mimetype, long contentLength) {
+                if (url == null || !url.startsWith("http")) return;
+                try {
+                    Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                } catch (Exception ignored) {
+                    // nothing to open it with
                 }
             }
         });

@@ -71,10 +71,12 @@ function Shell() {
     toast("Chat exported as Markdown.", "ok");
   };
 
-  const keyReady = activeModel
-    ? activeModel.provider === "custom"
+  const isAutoModel = (active?.modelId ?? settings.defaultModelId) === "auto";
+  const headerModel = isAutoModel ? store.autoModel : activeModel;
+  const keyReady = headerModel
+    ? headerModel.provider === "custom"
       ? true
-      : !!store.keys[`p:${activeModel.provider}`]?.key
+      : !!store.keys[`p:${headerModel.provider}`]?.key
     : false;
 
   return (
@@ -104,15 +106,15 @@ function Shell() {
                 {active?.title ?? "New chat"}
               </h1>
               <p className="flex items-center gap-1.5 truncate text-[10.5px] text-muted">
-                {activeModel && (
+                {headerModel && (
                   <>
                     <span
                       className="h-1.5 w-1.5 rounded-full"
-                      style={{ background: PROVIDERS[activeModel.provider].color }}
+                      style={{ background: PROVIDERS[headerModel.provider].color }}
                     />
-                    {activeModel.name}
+                    {isAutoModel ? `Auto → ${headerModel.name}` : headerModel.name}
                     <span className="opacity-50">·</span>
-                    {PROVIDERS[activeModel.provider].name}
+                    {PROVIDERS[headerModel.provider].name}
                   </>
                 )}
                 <span

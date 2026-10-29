@@ -15,6 +15,86 @@ const TEXT_EXT = [
 
 const IMAGE_EXT = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif", ".heic", ".heif"];
 
+function isZip(file: File): boolean {
+  return (
+    file.type === "application/zip" ||
+    file.type === "application/x-zip-compressed" ||
+    file.name.toLowerCase().endsWith(".zip")
+  );
+}
+
+function isTextName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return TEXT_EXT.some((ext) => lower.endsWith(ext)) || /(^|\/)(README|LICENSE|Dockerfile|Makefile)$/i.test(name);
+}
+
+async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
+  const Ctor = (globalThis as unknown as { DecompressionStream?: new (f: string) => TransformStream<Uint8Array, Uint8Array> })
+    .DecompressionStream;
+  if (!Ctor) throw new Error("This browser cannot unzip files.");
+  const stream = new Blob([data as unknown as BlobPart]).stream().pipeThrough(new Ctor("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/**
+ * Minimal ZIP reader: walks the central directory and inflates text entries with the
+ * platform's own DecompressionStream, so a project zip can be attached without pulling in
+ * a 100 KB library. Binary entries are skipped.
+ */
+async function readZipTexts(file: File): Promise<{ name: string; text: string }[]> {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 66000); i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) throw new Error("That file is not a readable zip.");
+
+  const count = dv.getUint16(eocd + 10, true);
+  let off = dv.getUint32(eocd + 16, true);
+  const out: { name: string; text: string }[] = [];
+  let total = 0;
+
+  for (let n = 0; n < count && out.length < 25; n++) {
+    if (off + 46 > buf.length || dv.getUint32(off, true) !== 0x02014b50) break;
+    const method = dv.getUint16(off + 10, true);
+    const compSize = dv.getUint32(off + 20, true);
+    const nameLen = dv.getUint16(off + 28, true);
+    const extraLen = dv.getUint16(off + 30, true);
+    const commentLen = dv.getUint16(off + 32, true);
+    const localOff = dv.getUint32(off + 42, true);
+    const name = new TextDecoder().decode(buf.subarray(off + 46, off + 46 + nameLen));
+    off += 46 + nameLen + extraLen + commentLen;
+
+    if (name.endsWith("/") || !isTextName(name)) continue;
+    if (localOff + 30 > buf.length) continue;
+
+    const lNameLen = dv.getUint16(localOff + 26, true);
+    const lExtraLen = dv.getUint16(localOff + 28, true);
+    const dataStart = localOff + 30 + lNameLen + lExtraLen;
+    if (dataStart + compSize > buf.length) continue;
+    const raw = buf.subarray(dataStart, dataStart + compSize);
+
+    let bytes: Uint8Array;
+    try {
+      if (method === 0) bytes = raw;
+      else if (method === 8) bytes = await inflateRaw(raw);
+      else continue;
+    } catch {
+      continue;
+    }
+    if (bytes.length > 200_000) continue;
+    out.push({ name, text: new TextDecoder().decode(bytes) });
+    total += bytes.length;
+    if (total > 400_000) break;
+  }
+  return out;
+}
+
 /**
  * Android file providers sometimes hand back application/octet-stream with a real
  * filename, so the MIME type alone is not enough to recognise a photo.
@@ -103,6 +183,28 @@ export async function fileToAttachment(file: File): Promise<AttachResult> {
     mime: file.type || "application/octet-stream",
     size: file.size,
   };
+
+  if (isZip(file)) {
+    try {
+      const entries = await readZipTexts(file);
+      if (entries.length === 0)
+        return { ok: false, reason: "that zip has no readable text or code files inside" };
+      const joined = entries
+        .map((e) => `--- file: ${e.name} ---\n${e.text}`)
+        .join("\n\n");
+      const capped = joined.length > ATTACH.maxTextChars ? joined.slice(0, ATTACH.maxTextChars) : joined;
+      return {
+        ok: true,
+        attachment: {
+          ...base,
+          kind: "text",
+          text: `${entries.length} file${entries.length === 1 ? "" : "s"} from ${file.name}\n\n${capped}`,
+        },
+      };
+    } catch (e) {
+      return { ok: false, reason: (e as Error).message || "could not unzip that file" };
+    }
+  }
 
   if (looksImage(file)) {
     if (file.size > ATTACH.maxImageBytes)

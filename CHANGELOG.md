@@ -1,5 +1,30 @@
 # Changelog
 
+## 3.2.0 — October 2026
+
+Built to feel like a consumer assistant app rather than a developer console — still with no
+account, no sign-in and no sign-up anywhere.
+
+### Added
+- **Auto model.** A new default entry in the model menu that picks the best *available* model for
+  each message: it filters by what the message needs (image input, tool calling, context that fits)
+  and then prefers the provider's flagship, the cheaper model on a tie. The header and composer show
+  what it picked ("Auto → Sarvam-105B") and the pick is re-evaluated per message.
+- **File cards on replies.** Any code block the model writes becomes a real file with
+  **Download · Open · Share**. A fence that names the file (` ```python math_utils.py `) uses that
+  name; otherwise one is generated from the language. In the APK, Download writes into the device's
+  Downloads folder through MediaStore.
+- **Zip attachments.** Drop a `.zip` and the text/code files inside it are extracted in the browser
+  (native `DecompressionStream`, no library) and inlined into the prompt — up to 25 files / 400 KB.
+  Binaries inside the archive are skipped.
+- `AndroidFiles` bridge in the APK: blob downloads are a no-op in a WebView, so saving goes through
+  MediaStore on Android 10+ and the app's Download folder on older devices.
+
+### Changed
+- A chat created while Auto is selected stays on Auto, so it keeps adapting as you attach images or
+  connect tools.
+- The Markdown renderer no longer prints the file name from a fence header as the first line of code.
+
 ## 3.1.0 — October 2026
 
 ### Changed

@@ -95,6 +95,7 @@ echo "==> javac"
 echo "==> d8"
 "$JAVA_BIN" -cp "$BT/lib/d8.jar" com.android.tools.r8.D8 \
   --min-api 23 --thread-count 1 --lib "$PLATFORM_JAR" \
+  --classpath "$BT/core-lambda-stubs.jar" \
   --output "$BUILD/dex" $(find "$BUILD/classes" -name '*.class')
 
 # ------------------------------------------------------------------- package

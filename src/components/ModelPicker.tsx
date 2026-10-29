@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect } from "react";
-import { Check, ChevronDown, Cpu, Search, Zap } from "lucide-react";
+import { Check, ChevronDown, Cpu, Search, Sparkles, Zap } from "lucide-react";
 import { PROVIDERS, PROVIDER_ORDER, type ModelDef } from "@/lib/catalog";
+import { AUTO_ID, pickAutoModel } from "@/lib/autoModel";
 import { useApp } from "@/lib/store";
 import { cn, shortNum } from "@/lib/cn";
 
@@ -13,7 +14,7 @@ export function ModelPicker({
   onChange: (id: string) => void;
   compact?: boolean;
 }) {
-  const { visibleModels, models, keys } = useApp();
+  const { visibleModels, models, keys, customProviders } = useApp();
   const [open, setOpen] = useState(false);
   const [dropUp, setDropUp] = useState(false);
   const [q, setQ] = useState("");
@@ -28,7 +29,12 @@ export function ModelPicker({
     setOpen((o) => !o);
   };
 
-  const current = models.find((m) => m.id === value) ?? visibleModels[0];
+  const isAuto = value === AUTO_ID;
+  const autoPick = useMemo(
+    () => pickAutoModel(visibleModels, keys, customProviders, {}),
+    [visibleModels, keys, customProviders],
+  );
+  const current = isAuto ? null : models.find((m) => m.id === value) ?? visibleModels[0];
 
   useEffect(() => {
     if (!open) return;
@@ -76,11 +82,17 @@ export function ModelPicker({
         )}
         title="Choose model"
       >
-        <span
-          className="h-2 w-2 rounded-full"
-          style={{ background: PROVIDERS[current?.provider ?? "sarvam"].color }}
-        />
-        <span className="max-w-[170px] truncate font-medium">{current?.name ?? "Select model"}</span>
+        {isAuto ? (
+          <Sparkles className="h-3.5 w-3.5 text-accent" />
+        ) : (
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ background: PROVIDERS[current?.provider ?? "sarvam"].color }}
+          />
+        )}
+        <span className="max-w-[170px] truncate font-medium">
+          {isAuto ? `Auto · ${autoPick?.model.name ?? "no model"}` : current?.name ?? "Select model"}
+        </span>
         {current?.status === "preview" && <span className="chip px-1.5 py-0">preview</span>}
         <ChevronDown className="h-3.5 w-3.5 text-muted" />
       </button>
@@ -105,6 +117,32 @@ export function ModelPicker({
             </div>
           </div>
           <div className="scroll-thin max-h-[52vh] overflow-y-auto p-1.5">
+            <button
+              onClick={() => {
+                onChange(AUTO_ID);
+                setOpen(false);
+              }}
+              className={cn(
+                "mb-1 flex w-full items-start gap-2 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-white/8",
+                isAuto && "bg-white/8",
+              )}
+            >
+              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-accent/15">
+                <Sparkles className="h-3.5 w-3.5 text-accent" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5 text-[12.5px] font-medium text-ink">
+                  Auto
+                  {isAuto && <Check className="h-3 w-3 text-accent" />}
+                </span>
+                <span className="mt-0.5 block text-[10.5px] leading-relaxed text-muted">
+                  {autoPick
+                    ? `Picks the best available model — now ${autoPick.model.name}`
+                    : "Picks the best available model (needs a key)"}
+                </span>
+              </span>
+            </button>
+            <div className="my-1 h-px bg-white/8" />
             {groups.length === 0 && (
               <p className="px-3 py-6 text-center text-[12px] text-muted">
                 No model matches “{q}”. Add one in Settings → Models.
