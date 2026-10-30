@@ -1,0 +1,14 @@
+# core
+fastapi>=0.110
+uvicorn>=0.27
+httpx>=0.27
+pydantic>=2.5
+
+# key encryption at rest (optional but recommended)
+cryptography>=42
+
+# nicer terminal output (optional)
+rich>=13
+
+# native window for `--desktop` (optional)
+# pywebview>=5
