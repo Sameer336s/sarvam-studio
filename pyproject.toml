@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sarvam-studio"
+version = "3.5.1"
+description = "Multi-model AI chat studio in Python — Sarvam AI, OpenAI, Anthropic, Gemini and any OpenAI-compatible endpoint, with MCP tools and encrypted local keys."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Samir Sayyad" }]
+keywords = ["sarvam", "llm", "ai", "chat", "mcp", "openai", "anthropic", "gemini", "fastapi"]
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn>=0.27",
+  "httpx>=0.27",
+  "pydantic>=2.5",
+]
+
+[project.optional-dependencies]
+crypto = ["cryptography>=42"]
+cli = ["rich>=13"]
+desktop = ["pywebview>=5"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+sarvam-studio = "sarvam_studio.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/Sameer336s/sarvam-studio"
+
+[tool.setuptools.packages.find]
+include = ["sarvam_studio*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
