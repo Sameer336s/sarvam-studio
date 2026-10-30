@@ -70,6 +70,30 @@ Version 3 is a performance and capability pass on top of v2:
 
 ---
 
+## Built with this app
+
+Real output, not mockups. [`examples/`](examples/) holds projects that were written by the model inside
+this app and shipped as-is.
+
+<table>
+<tr>
+<td width="46%"><img src="examples/typefight/screenshot.png" alt="TypeFight" /></td>
+<td>
+
+**TypeFight — Typing Duel** · [live](https://stickma.netlify.app) · [source](examples/typefight/)
+
+A one-file typing game: every correct keystroke lands a hit on a stickman, finishing a word triggers a
+finisher, a wrong key or a stall lets Shadow strike back. Rounds scale, HP grows, sound is synthesised
+with the Web Audio API.
+
+35 KB of HTML with inline CSS and JS. No build step, no dependencies, deployed to Netlify unchanged.
+
+</td>
+</tr>
+</table>
+
+---
+
 ## Features
 
 ### Talk mode
