@@ -1,0 +1,931 @@
+<!DOCTYPE html><html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><style rel="stylesheet" type="text/css">@charset "utf-8";
+
+*, ::before, ::after { box-sizing: border-box; margin: 0px; padding: 0px; }
+
+:root { --gold: #e3b04b; --gold-hi: #ffd479; --paper: #f2ece1; --dim: #8b8478; --red: #d9534f; --red-hi: #ff8a84; }
+
+html, body { height: 100%; }
+
+body { background: radial-gradient(1200px 700px at 50% -15%, rgb(27, 27, 34) 0%, rgb(11, 11, 14) 55%, rgb(6, 6, 8) 100%); color: var(--paper); font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px; overflow: hidden; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; user-select: none; cursor: default; }
+
+.app { width: 100%; max-width: 940px; position: relative; z-index: 1; }
+
+.hud { display: flex; gap: 9px; justify-content: center; margin-bottom: 12px; flex-wrap: wrap; }
+
+.stat { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 80px; padding: 8px 14px; border-radius: 12px; background: linear-gradient(rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01)); border: 1px solid rgba(227, 176, 75, 0.16); transition: border-color 0.3s, box-shadow 0.3s; }
+
+.stat .k { font-size: 9px; letter-spacing: 0.24em; color: var(--dim); text-transform: uppercase; margin-bottom: 2px; }
+
+.stat .v { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.stat.hot { border-color: rgba(227, 176, 75, 0.65); box-shadow: rgba(227, 176, 75, 0.25) 0px 0px 24px; }
+
+.stat.hot .v { color: var(--gold-hi); }
+
+.stage { position: relative; border-radius: 20px; overflow: hidden; border: 1px solid rgba(227, 176, 75, 0.15); background: radial-gradient(120% 100% at 50% 108%, rgba(227, 176, 75, 0.1), transparent 62%), linear-gradient(rgb(16, 16, 21) 0%, rgb(10, 10, 13) 100%); padding: 14px 16px 0px; box-shadow: rgba(0, 0, 0, 0.9) 0px 30px 70px -30px, rgba(255, 255, 255, 0.04) 0px 1px 0px inset; }
+
+.stage::after { content: ""; position: absolute; inset: 0px; pointer-events: none; opacity: 0; background: radial-gradient(circle, rgba(255, 212, 121, 0.22), transparent 65%); }
+
+.stage.flash::after { animation: 0.34s ease-out 0s 1 normal none running flash; }
+
+@keyframes flash { 
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.stage.shake { animation: 0.34s cubic-bezier(0.36, 0.07, 0.19, 0.97) 0s 1 normal none running shake; }
+
+@keyframes shake { 
+  0%, 100% { transform: translate(0px, 0px); }
+  20% { transform: translate(-7px, 3px); }
+  40% { transform: translate(6px, -3px); }
+  60% { transform: translate(-4px, 2px); }
+  80% { transform: translate(3px, -1px); }
+}
+
+.hp-row { display: flex; gap: 16px; align-items: center; }
+
+.hp { flex: 1 1 0%; }
+
+.hp-label { font-size: 9px; letter-spacing: 0.26em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
+
+.hp.right { text-align: right; }
+
+.hp.right .hp-label { color: rgb(160, 106, 102); }
+
+.hp-track { height: 8px; border-radius: 99px; overflow: hidden; background: rgba(255, 255, 255, 0.055); border: 1px solid rgba(255, 255, 255, 0.06); display: flex; }
+
+.hp.right .hp-track { justify-content: flex-end; }
+
+.hp-fill { height: 100%; width: 100%; border-radius: 99px; transition: width 0.28s cubic-bezier(0.2, 0.8, 0.3, 1); }
+
+.hp-fill.player { background: linear-gradient(90deg,#8a6a26,var(--gold),var(--gold-hi)); box-shadow: rgba(227, 176, 75, 0.55) 0px 0px 14px; }
+
+.hp-fill.enemy { background: linear-gradient(90deg,#8e2f2b,var(--red),var(--red-hi)); box-shadow: rgba(217, 83, 79, 0.5) 0px 0px 14px; }
+
+.arena { position: relative; height: clamp(220px, 30vh, 300px); margin-top: 6px; }
+
+.fx { position: absolute; inset: 0px; pointer-events: none; z-index: 5; }
+
+.floor { position: absolute; left: -16px; right: -16px; bottom: 8px; height: 1px; background: linear-gradient(90deg, transparent, rgba(227, 176, 75, 0.45), transparent); }
+
+.glow { position: absolute; bottom: -10px; width: 160px; height: 36px; border-radius: 50%; filter: blur(16px); opacity: 0.55; pointer-events: none; }
+
+.glow.p { left: calc(12% - 12px); background: radial-gradient(closest-side, rgba(227, 176, 75, 0.8), transparent); }
+
+.glow.e { right: calc(12% - 12px); background: radial-gradient(closest-side, rgba(217, 83, 79, 0.7), transparent); }
+
+.fighter { position: absolute; bottom: 8px; width: clamp(92px, 13vw, 132px); pointer-events: none; }
+
+.fighter.player { left: 12%; }
+
+.fighter.enemy { right: 12%; }
+
+.bob { animation: 2.8s ease-in-out 0s infinite normal none running bob; }
+
+.fighter.enemy .bob { animation-delay: -1.4s; }
+
+@keyframes bob { 
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-5px); }
+}
+
+.rig { transform-origin: 50% 100%; }
+
+.rig.lunge { animation: 0.34s cubic-bezier(0.2, 0.8, 0.3, 1) 0s 1 normal none running lungeP; }
+
+@keyframes lungeP { 
+  0% { transform: translateX(0px); }
+  35% { transform: translateX(34px); }
+  100% { transform: translateX(0px); }
+}
+
+.rig.lunge-big { animation: 0.5s cubic-bezier(0.2, 0.8, 0.3, 1) 0s 1 normal none running lungeBig; }
+
+@keyframes lungeBig { 
+  0% { transform: translateX(0px); }
+  24% { transform: translateX(62px); }
+  58% { transform: translateX(54px); }
+  100% { transform: translateX(0px); }
+}
+
+.rig.lunge-e { animation: 0.34s cubic-bezier(0.2, 0.8, 0.3, 1) 0s 1 normal none running lungeE; }
+
+@keyframes lungeE { 
+  0% { transform: translateX(0px); }
+  35% { transform: translateX(-34px); }
+  100% { transform: translateX(0px); }
+}
+
+.rig.hurt { animation: 0.4s ease-out 0s 1 normal none running hurtE; }
+
+@keyframes hurtE { 
+  0% { transform: translateX(0px) rotate(0deg); }
+  18% { transform: translateX(26px) rotate(5deg); }
+  55% { transform: translateX(8px) rotate(-2deg); }
+  100% { transform: translateX(0px) rotate(0deg); }
+}
+
+.rig.hurt-p { animation: 0.44s ease-out 0s 1 normal none running hurtP; }
+
+@keyframes hurtP { 
+  0% { transform: translateX(0px) rotate(0deg); }
+  18% { transform: translateX(-26px) rotate(-5deg); }
+  55% { transform: translateX(-8px) rotate(2deg); }
+  100% { transform: translateX(0px) rotate(0deg); }
+}
+
+.rig.ko { animation: 0.9s cubic-bezier(0.4, 0, 0.7, 1) 0s 1 normal forwards running koFall; }
+
+@keyframes koFall { 
+  0% { transform: translateY(0px) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(30px) rotate(80deg); opacity: 0.22; }
+}
+
+.stickman { width: 100%; height: auto; display: block; overflow: visible; }
+
+.stickman line, .stickman circle { fill: none; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+
+.fighter.player .stickman line, .fighter.player .stickman circle { stroke: rgb(244, 239, 228); }
+
+.fighter.player .stickman { filter: drop-shadow(rgba(227, 176, 75, 0.35) 0px 0px 10px); }
+
+.fighter.enemy .stickman line, .fighter.enemy .stickman circle { stroke: rgb(196, 84, 77); }
+
+.fighter.enemy .stickman { transform: scaleX(-1); filter: drop-shadow(rgba(217, 83, 79, 0.35) 0px 0px 10px); }
+
+.arm-front, .arm-back, .leg-front, .leg-back { transform-box: fill-box; }
+
+.arm-front { transform-origin: 0% 0%; }
+
+.arm-back { transform-origin: 100% 0%; }
+
+.leg-front { transform-origin: 0% 0%; }
+
+.leg-back { transform-origin: 100% 0%; }
+
+.arm-front.punch { animation: 0.3s ease-out 0s 1 normal none running jab; }
+
+@keyframes jab { 
+  0% { transform: rotate(0deg); }
+  30% { transform: rotate(-32deg); }
+  55% { transform: rotate(-32deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.arm-back.counter { animation: 0.3s ease-out 0s 1 normal none running counter; }
+
+@keyframes counter { 
+  0% { transform: rotate(0deg); }
+  30% { transform: rotate(22deg); }
+  55% { transform: rotate(22deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.leg-front.kick { animation: 0.46s ease-out 0s 1 normal none running kick; }
+
+@keyframes kick { 
+  0% { transform: rotate(0deg); }
+  30% { transform: rotate(-92deg); }
+  60% { transform: rotate(-92deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.spark { position: absolute; width: 14px; height: 14px; margin: -7px 0px 0px -7px; border-radius: 50%; pointer-events: none; background: radial-gradient(circle,#fff 0%,var(--c,#ffd479) 35%,transparent 72%); animation: 0.5s ease-out 0s 1 normal forwards running sparkPop; }
+
+@keyframes sparkPop { 
+  0% { transform: scale(0.4); opacity: 1; }
+  100% { transform: scale(4.4); opacity: 0; }
+}
+
+.dmg { position: absolute; transform: translate(-50%, -50%); font-weight: 800; font-size: 16px; letter-spacing: 0.02em; color: var(--gold-hi); text-shadow: rgba(255, 212, 121, 0.85) 0px 0px 14px; pointer-events: none; font-variant-numeric: tabular-nums; animation: 0.72s ease-out 0s 1 normal forwards running dmgUp; }
+
+.dmg.big { font-size: 24px; color: rgb(255, 255, 255); text-shadow: rgb(255, 212, 121) 0px 0px 22px; }
+
+.dmg.bad { color: var(--red-hi); text-shadow: rgba(217, 83, 79, 0.9) 0px 0px 14px; }
+
+@keyframes dmgUp { 
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.55); }
+  22% { opacity: 1; transform: translate(-50%, -95%) scale(1.18); }
+  100% { opacity: 0; transform: translate(-50%, -200%) scale(1); }
+}
+
+.typebar { margin-top: 14px; padding: 20px 18px 22px; text-align: center; border-radius: 18px; border: 1px solid rgba(227, 176, 75, 0.14); background: linear-gradient(rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.008)); box-shadow: rgba(255, 255, 255, 0.04) 0px 1px 0px inset; }
+
+.word { display: flex; justify-content: center; gap: 0.05em; font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-size: clamp(26px, 4.4vw, 44px); font-weight: 500; letter-spacing: 0.14em; min-height: 1.25em; line-height: 1.25; }
+
+.letter { transition: color 0.08s; }
+
+.letter.pending { color: rgb(69, 69, 78); }
+
+.letter.done { color: var(--gold); }
+
+.letter.cur { color: rgb(255, 255, 255); text-decoration-line: underline; text-decoration-style: initial; text-decoration-color: var(--gold); text-decoration-thickness: 3px; text-underline-offset: 9px; text-shadow: rgba(227, 176, 75, 0.6) 0px 0px 20px; }
+
+.letter.wrong { color: var(--red); animation: 0.18s ease 0s 1 normal none running wrongShake; }
+
+@keyframes wrongShake { 
+  0%, 100% { transform: translateX(0px); }
+  30% { transform: translateX(-4px); }
+  70% { transform: translateX(4px); }
+}
+
+.tip { margin-top: 14px; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: rgb(106, 100, 89); transition: color 0.25s; }
+
+.tip.warn { color: var(--gold); }
+
+.overlay { position: fixed; inset: 0px; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(6, 6, 8, 0.82); backdrop-filter: blur(9px); opacity: 0; pointer-events: none; transition: opacity 0.32s; padding: 20px; }
+
+.overlay.show { opacity: 1; pointer-events: auto; }
+
+.panel { width: 100%; max-width: 430px; text-align: center; padding: 40px 34px 34px; border-radius: 22px; border: 1px solid rgba(227, 176, 75, 0.22); background: linear-gradient(rgb(20, 20, 26), rgb(11, 11, 15)); box-shadow: rgba(0, 0, 0, 0.95) 0px 40px 90px -30px, rgba(255, 255, 255, 0.05) 0px 1px 0px inset; transform: translateY(14px) scale(0.97); transition: transform 0.38s cubic-bezier(0.2, 0.9, 0.3, 1); }
+
+.overlay.show .panel { transform: translateY(0px) scale(1); }
+
+.eyebrow { font-size: 9px; letter-spacing: 0.36em; text-transform: uppercase; color: var(--gold); margin-bottom: 16px; }
+
+.panel h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(30px, 6vw, 42px); font-weight: 400; line-height: 1.1; letter-spacing: 0.01em; margin-bottom: 14px; background: linear-gradient(rgb(255, 255, 255) 0%, rgb(216, 201, 164) 55%, rgb(169, 139, 70) 100%) text; color: transparent; }
+
+.panel p { font-size: 13.5px; line-height: 1.65; color: rgb(154, 147, 138); margin-bottom: 28px; letter-spacing: 0.01em; }
+
+.btn { font-style: inherit; font-variant: inherit; font-stretch: inherit; line-height: inherit; font-family: inherit; font-optical-sizing: inherit; font-size-adjust: inherit; font-kerning: inherit; font-feature-settings: inherit; font-variation-settings: inherit; font-language-override: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.26em; text-transform: uppercase; padding: 15px 34px; border-radius: 99px; cursor: pointer; color: rgb(20, 16, 10); border-width: medium; border-style: none; border-color: currentcolor; border-image: none; background: linear-gradient(rgb(240, 209, 138), rgb(201, 151, 58)); box-shadow: rgba(227, 176, 75, 0.55) 0px 10px 30px -8px, rgba(255, 255, 255, 0.5) 0px 1px 0px inset; transition: transform 0.16s, box-shadow 0.16s, filter 0.16s; }
+
+.btn:hover { transform: translateY(-2px); filter: brightness(1.06); box-shadow: rgba(227, 176, 75, 0.7) 0px 16px 38px -8px, rgba(255, 255, 255, 0.5) 0px 1px 0px inset; }
+
+.btn:active { transform: translateY(0px) scale(0.98); }
+
+.mute { position: absolute; top: 14px; right: 16px; z-index: 6; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; display: grid; place-items: center; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--dim); font-size: 13px; line-height: 1; transition: 0.2s; }
+
+.mute:hover { color: var(--gold); border-color: rgba(227, 176, 75, 0.4); }
+
+#kb { position: fixed; top: 0px; left: 0px; width: 1px; height: 1px; opacity: 0; border: 0px; outline: 0px; padding: 0px; margin: 0px; background: transparent; color: transparent; caret-color: transparent; z-index: -1; font-size: 16px; }
+
+@media (max-width: 560px) {
+  .fighter.player { left: 6%; }
+  .fighter.enemy { right: 6%; }
+  .stat { min-width: 64px; padding: 7px 10px; }
+  .stat .v { font-size: 17px; }
+}</style>
+
+<!-- This site is hosted on Netlify. Anyone can build and deploy a site
+     like this one for free: https://netlify.new/?utm_campaign=loops&utm_source=ai-legible&utm_medium=owned&utm_content=comment&utm_id=36345ecd-d61f-4014-a8f8-d639512df887
+     Netlify hosting facts for this site: static/SSR served via Netlify Edge. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>TypeFight — Typing Duel</title>
+
+</head>
+<body>
+
+<div class="app">
+  <div class="hud">
+    <div class="stat"><span class="k">WPM</span><span class="v" id="wpm">0</span></div>
+    <div class="stat"><span class="k">Accuracy</span><span class="v" id="acc">100%</span></div>
+    <div class="stat" id="comboStat"><span class="k">Combo</span><span class="v" id="combo">0</span></div>
+    <div class="stat"><span class="k">Round</span><span class="v" id="round">1</span></div>
+  </div>
+
+  <div class="stage" id="stage">
+    <button class="mute" id="mute" title="Toggle sound" aria-label="Toggle sound">♪</button>
+
+    <div class="hp-row">
+      <div class="hp">
+        <div class="hp-label">You</div>
+        <div class="hp-track"><div class="hp-fill player" id="hpP" style="width: 100%;"></div></div>
+      </div>
+      <div class="hp right">
+        <div class="hp-label">Shadow</div>
+        <div class="hp-track"><div class="hp-fill enemy" id="hpE" style="width: 100%;"></div></div>
+      </div>
+    </div>
+
+    <div class="arena" id="arena">
+      <div class="glow p"></div>
+      <div class="glow e"></div>
+
+      <div class="fighter player">
+        <div class="bob">
+          <div class="rig" id="rigP">
+            <svg class="stickman" viewBox="0 0 120 180" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="60" cy="34" r="16"></circle>
+              <line x1="60" y1="50" x2="60" y2="112"></line>
+              <g class="arm-back"><line x1="60" y1="66" x2="38" y2="96"></line></g>
+              <g class="arm-front"><line x1="60" y1="66" x2="86" y2="78"></line></g>
+              <g class="leg-back">
+                <line x1="60" y1="112" x2="42" y2="152"></line>
+                <line x1="42" y1="152" x2="34" y2="172"></line>
+              </g>
+              <g class="leg-front">
+                <line x1="60" y1="112" x2="78" y2="152"></line>
+                <line x1="78" y1="152" x2="90" y2="172"></line>
+              </g>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="fighter enemy">
+        <div class="bob">
+          <div class="rig" id="rigE">
+            <svg class="stickman" viewBox="0 0 120 180" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="60" cy="34" r="16"></circle>
+              <line x1="60" y1="50" x2="60" y2="112"></line>
+              <g class="arm-back"><line x1="60" y1="66" x2="38" y2="96"></line></g>
+              <g class="arm-front"><line x1="60" y1="66" x2="86" y2="78"></line></g>
+              <g class="leg-back">
+                <line x1="60" y1="112" x2="42" y2="152"></line>
+                <line x1="42" y1="152" x2="34" y2="172"></line>
+              </g>
+              <g class="leg-front">
+                <line x1="60" y1="112" x2="78" y2="152"></line>
+                <line x1="78" y1="152" x2="90" y2="172"></line>
+              </g>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="fx" id="fx"></div>
+      <div class="floor"></div>
+    </div>
+  </div>
+
+  <div class="typebar">
+    <div class="word" id="word"></div>
+    <div class="tip" id="tip">Type the word — every keystroke is a strike</div>
+  </div>
+</div>
+
+<div class="overlay show" id="overlay">
+  <div class="panel">
+    <div class="eyebrow" id="ovEyebrow">Typing duel</div>
+    <h1 id="ovTitle">TypeFight</h1>
+    <p id="ovText">Every correct keystroke lands a hit. Complete the word for a finisher. Miss a key — or stall too long — and Shadow strikes back.</p>
+    <button class="btn" id="ovBtn" type="button">Start fight</button>
+  </div>
+</div>
+
+<input id="kb" type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-hidden="true" tabindex="-1">
+
+<script>
+(function () {
+  "use strict";
+
+  /* =========================================================
+     WORD POOLS
+     ========================================================= */
+  var WORDS = {
+    1: ["jab","hit","run","fly","box","win","arc","sky","red","fox","key","tap","one","two","six","ten",
+        "man","war","ice","cut","axe","bow","aim","arm","kick","chop","spin","jump","duck","dash","move",
+        "fast","beat","blow","fire","wind","rock","star","moon","gold","iron","dark","glow","snap","fist",
+        "rage","fury","bold","calm","step","leap","spin","dart","edge","claw","fang","hunt","rush"],
+    2: ["strike","shadow","silent","silver","combat","battle","spirit","rocket","falcon","tiger","dragon",
+        "blade","steel","power","speed","quick","sharp","flash","storm","blaze","frost","night","light",
+        "force","crash","smash","swing","guard","block","dodge","cobra","viper","raven","arrow","sword",
+        "shield","impact","attack","defend","charge","tackle","thrust","parry","sprint","tempo","rhythm",
+        "strike","combat","battle","shadow"],
+    3: ["warrior","thunder","phantom","crimson","victory","triumph","gladiator","champion","lightning",
+        "hurricane","avalanche","momentum","precision","accuracy","velocity","blizzard","spectrum",
+        "fortress","sentinel","guardian","titanium","starlight","moonlight","overdrive","hypernova",
+        "onslaught","relentless"]
+  };
+
+  /* =========================================================
+     DOM
+     ========================================================= */
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+
+  var stage     = $("#stage");
+  var arena     = $("#arena");
+  var fxLayer   = $("#fx");
+  var wordEl    = $("#word");
+  var tipEl     = $("#tip");
+  var hpP       = $("#hpP");
+  var hpE       = $("#hpE");
+  var wpmEl     = $("#wpm");
+  var accEl     = $("#acc");
+  var comboEl   = $("#combo");
+  var comboStat = $("#comboStat");
+  var roundEl   = $("#round");
+  var overlay   = $("#overlay");
+  var ovEyebrow = $("#ovEyebrow");
+  var ovTitle   = $("#ovTitle");
+  var ovText    = $("#ovText");
+  var ovBtn     = $("#ovBtn");
+  var muteBtn   = $("#mute");
+  var kb        = $("#kb");
+
+  var P = {
+    rig : $("#rigP"),
+    armF: $("#rigP .arm-front"),
+    armB: $("#rigP .arm-back"),
+    legF: $("#rigP .leg-front")
+  };
+  var E = {
+    rig : $("#rigE"),
+    armF: $("#rigE .arm-front"),
+    armB: $("#rigE .arm-back"),
+    legF: $("#rigE .leg-front")
+  };
+
+  /* =========================================================
+     STATE
+     ========================================================= */
+  var state = {
+    phase: "idle",          // idle | fight
+    hp: 100, hpMax: 100,
+    ehp: 100, ehpMax: 100,
+    round: 1,
+    combo: 0, best: 0,
+    correct: 0, wrong: 0,
+    word: "", idx: 0,
+    start: 0,
+    lastKey: 0,
+    idleLimit: 5200,
+    locked: false,
+    typedOnce: false
+  };
+
+  var overlayAction = null;
+
+  /* =========================================================
+     AUDIO
+     ========================================================= */
+  var actx = null, muted = false;
+
+  function sfx(kind) {
+    if (muted) return;
+    try {
+      if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === "suspended") actx.resume();
+
+      var t = actx.currentTime;
+      var o = actx.createOscillator();
+      var g = actx.createGain();
+      o.connect(g); g.connect(actx.destination);
+
+      if (kind === "hit") {
+        o.type = "square";
+        o.frequency.setValueAtTime(680, t);
+        o.frequency.exponentialRampToValueAtTime(230, t + 0.08);
+        g.gain.setValueAtTime(0.028, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+        o.start(t); o.stop(t + 0.1);
+      } else if (kind === "heavy") {
+        o.type = "sawtooth";
+        o.frequency.setValueAtTime(190, t);
+        o.frequency.exponentialRampToValueAtTime(58, t + 0.18);
+        g.gain.setValueAtTime(0.05, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+        o.start(t); o.stop(t + 0.22);
+      } else if (kind === "miss") {
+        o.type = "sawtooth";
+        o.frequency.setValueAtTime(150, t);
+        o.frequency.exponentialRampToValueAtTime(68, t + 0.14);
+        g.gain.setValueAtTime(0.042, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+        o.start(t); o.stop(t + 0.18);
+      }
+    } catch (err) { /* audio not available — stay silent */ }
+  }
+
+  muteBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    muted = !muted;
+    muteBtn.textContent = muted ? "✕" : "♪";
+    muteBtn.style.color = muted ? "#5a554d" : "";
+    focusKeyboard();
+  });
+
+  /* =========================================================
+     ANIMATION HELPERS
+     ========================================================= */
+  function anim(el, cls, ms) {
+    if (!el) return;
+    el.classList.remove(cls);
+    void el.getBoundingClientRect();
+    el.classList.add(cls);
+    clearTimeout(el._t);
+    el._t = setTimeout(function () { el.classList.remove(cls); }, ms);
+  }
+
+  function pointOf(el) {
+    var a = arena.getBoundingClientRect();
+    var b = el.getBoundingClientRect();
+    return {
+      x: b.left - a.left + b.width * 0.5,
+      y: b.top - a.top + b.height * 0.38
+    };
+  }
+
+  function spark(el, color) {
+    var p = pointOf(el);
+    var d = document.createElement("div");
+    d.className = "spark";
+    d.style.left = p.x + "px";
+    d.style.top = p.y + "px";
+    d.style.setProperty("--c", color);
+    fxLayer.appendChild(d);
+    setTimeout(function () { d.remove(); }, 520);
+  }
+
+  function dmgText(el, amount, big, bad) {
+    var p = pointOf(el);
+    var d = document.createElement("div");
+    d.className = "dmg" + (big ? " big" : "") + (bad ? " bad" : "");
+    d.textContent = "-" + amount;
+    d.style.left = p.x + "px";
+    d.style.top = p.y + "px";
+    fxLayer.appendChild(d);
+    setTimeout(function () { d.remove(); }, 760);
+  }
+
+  /* =========================================================
+     STRIKES
+     ========================================================= */
+  function playerStrike(dmg, finisher) {
+    anim(P.rig, finisher ? "lunge-big" : "lunge", finisher ? 520 : 350);
+    anim(P.armF, "punch", 320);
+    anim(P.armB, "counter", 320);
+    if (finisher) anim(P.legF, "kick", 470);
+    sfx(finisher ? "heavy" : "hit");
+
+    setTimeout(function () {
+      anim(E.rig, "hurt", 410);
+      spark(E.rig, finisher ? "#ffd479" : "#fff0c2");
+      dmgText(E.rig, dmg, finisher, false);
+      damageEnemy(dmg);
+      if (finisher) {
+        stage.classList.remove("flash");
+        void stage.offsetWidth;
+        stage.classList.add("flash");
+        setTimeout(function () { stage.classList.remove("flash"); }, 360);
+      }
+    }, finisher ? 150 : 95);
+  }
+
+  function enemyStrike(dmg) {
+    anim(E.rig, "lunge-e", 350);
+    anim(E.armF, "punch", 320);
+    sfx("miss");
+
+    setTimeout(function () {
+      anim(P.rig, "hurt-p", 450);
+      spark(P.rig, "#ff8a84");
+      dmgText(P.rig, dmg, false, true);
+      stage.classList.remove("shake");
+      void stage.offsetWidth;
+      stage.classList.add("shake");
+      setTimeout(function () { stage.classList.remove("shake"); }, 360);
+      damagePlayer(dmg);
+    }, 120);
+  }
+
+  /* =========================================================
+     DAMAGE
+     ========================================================= */
+  function damageEnemy(n) {
+    state.ehp = Math.max(0, state.ehp - n);
+    hpE.style.width = (state.ehp / state.ehpMax) * 100 + "%";
+    if (state.ehp <= 0) roundClear();
+  }
+
+  function damagePlayer(n) {
+    state.hp = Math.max(0, state.hp - n);
+    hpP.style.width = (state.hp / state.hpMax) * 100 + "%";
+    if (state.hp <= 0) gameOver();
+  }
+
+  /* =========================================================
+     WORD HANDLING
+     ========================================================= */
+  function pickWord() {
+    var tier = state.round >= 5 ? 3 : state.round >= 3 ? 2 : 1;
+    var pool = WORDS[tier];
+    var w, guard = 0;
+    do {
+      w = pool[(Math.random() * pool.length) | 0];
+      guard++;
+    } while (w === state.word && guard < 14);
+    return w;
+  }
+
+  function newWord() {
+    state.word = pickWord();
+    state.idx = 0;
+    renderWord();
+    setTip("Type the word — every keystroke is a strike", false);
+  }
+
+  function renderWord() {
+    wordEl.innerHTML = "";
+    if (!state.word) return;
+
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < state.word.length; i++) {
+      var s = document.createElement("span");
+      var cls = "letter ";
+      if (i < state.idx) cls += "done";
+      else if (i === state.idx) cls += "cur";
+      else cls += "pending";
+      s.className = cls;
+      s.textContent = state.word[i];
+      frag.appendChild(s);
+    }
+    wordEl.appendChild(frag);
+  }
+
+  function flashWrong() {
+    var cur = wordEl.querySelector(".letter.cur");
+    if (!cur) return;
+    cur.classList.add("wrong");
+    setTimeout(function () { cur.classList.remove("wrong"); }, 220);
+  }
+
+  function setTip(text, warn) {
+    tipEl.textContent = text;
+    tipEl.classList.toggle("warn", !!warn);
+  }
+
+  /* =========================================================
+     INPUT
+     ========================================================= */
+  function handleChar(raw) {
+    if (state.phase !== "fight" || state.locked) return;
+    if (!raw || raw.length !== 1) return;
+
+    var ch = raw.toLowerCase();
+    if (ch === " ") return;
+    if (!/[a-z]/.test(ch)) return;
+
+    state.lastKey = performance.now();
+    state.typedOnce = true;
+
+    if (ch === state.word[state.idx]) {
+      /* ---- correct key ---- */
+      state.correct++;
+      state.idx++;
+      state.combo++;
+      if (state.combo > state.best) state.best = state.combo;
+
+      if (state.idx >= state.word.length) {
+        /* word complete → finisher */
+        state.locked = true;
+        var bonus = 9 + Math.min(9, Math.floor(state.combo / 4));
+        playerStrike(bonus, true);
+        updateHUD();
+        setTip("Finisher! +" + bonus, false);
+
+        setTimeout(function () {
+          if (state.phase === "fight") {
+            newWord();
+            state.locked = false;
+          }
+        }, 270);
+      } else {
+        playerStrike(3, false);
+        renderWord();
+        updateHUD();
+      }
+    } else {
+      /* ---- wrong key ---- */
+      state.wrong++;
+      state.combo = 0;
+      flashWrong();
+      updateHUD();
+      setTip("Missed — Shadow strikes back", true);
+      enemyStrike(6);
+    }
+  }
+
+  /* --- hidden input captures characters (works on mobile too) --- */
+  function onInput() {
+    var v = kb.value;
+    kb.value = "";
+    if (!v) return;
+    for (var i = 0; i < v.length; i++) handleChar(v[i]);
+  }
+  kb.addEventListener("input", onInput);
+
+  /* --- global keydown: start / restart / fallback typing --- */
+  function onKeyDown(e) {
+    /* Enter or Space starts / continues */
+    if (state.phase !== "fight") {
+      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+        e.preventDefault();
+        if (overlay.classList.contains("show") && typeof overlayAction === "function") {
+          overlayAction();
+        }
+        return;
+      }
+    }
+
+    /* if the hidden field is focused, the input event already handles chars */
+    if (document.activeElement === kb) return;
+
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key.length !== 1) return;
+
+    if (e.key === " ") { e.preventDefault(); return; }
+
+    e.preventDefault();
+    handleChar(e.key);
+  }
+
+  window.addEventListener("keydown", onKeyDown, true);
+
+  /* --- keep the hidden field focused so keys always land --- */
+  function focusKeyboard() {
+    try { kb.focus({ preventScroll: true }); }
+    catch (err) { try { kb.focus(); } catch (e2) {} }
+  }
+
+  document.addEventListener("pointerdown", function () {
+    if (state.phase === "fight") focusKeyboard();
+  }, true);
+
+  /* =========================================================
+     HUD
+     ========================================================= */
+  function wpm() {
+    if (!state.start) return 0;
+    var min = (performance.now() - state.start) / 60000;
+    if (min < 0.02) return 0;
+    return Math.round((state.correct / 5) / min);
+  }
+
+  function accuracy() {
+    var total = state.correct + state.wrong;
+    if (!total) return 100;
+    return Math.round((state.correct / total) * 100);
+  }
+
+  function updateHUD() {
+    comboEl.textContent = state.combo;
+    roundEl.textContent = state.round;
+    comboStat.classList.toggle("hot", state.combo >= 10);
+  }
+
+  /* =========================================================
+     OVERLAY
+     ========================================================= */
+  function showOverlay(eyebrow, title, text, btnLabel, action) {
+    ovEyebrow.textContent = eyebrow;
+    ovTitle.textContent = title;
+    ovText.textContent = text;
+    ovBtn.textContent = btnLabel;
+    overlayAction = action;
+    overlay.classList.add("show");
+  }
+
+  function hideOverlay() {
+    overlay.classList.remove("show");
+    overlayAction = null;
+    ovBtn.blur();
+  }
+
+  ovBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    var fn = overlayAction;
+    ovBtn.blur();
+    if (typeof fn === "function") fn();
+  });
+
+  /* =========================================================
+     GAME FLOW
+     ========================================================= */
+  function startGame() {
+    state.phase = "fight";
+    state.hp = 100;  state.hpMax = 100;
+    state.ehp = 100; state.ehpMax = 100;
+    state.round = 1;
+    state.combo = 0; state.best = 0;
+    state.correct = 0; state.wrong = 0;
+    state.start = performance.now();
+    state.lastKey = performance.now();
+    state.idleLimit = 5200;
+    state.locked = false;
+    state.typedOnce = false;
+
+    hpP.style.width = "100%";
+    hpE.style.width = "100%";
+    P.rig.classList.remove("ko");
+    E.rig.classList.remove("ko");
+
+    wpmEl.textContent = "0";
+    accEl.textContent = "100%";
+
+    hideOverlay();
+    newWord();
+    updateHUD();
+    focusKeyboard();
+  }
+
+  function nextRound() {
+    state.round++;
+    state.ehpMax = 100 + (state.round - 1) * 30;
+    state.ehp = state.ehpMax;
+    state.hp = Math.min(state.hpMax, state.hp + 25);
+    state.idleLimit = Math.max(2200, 5200 - state.round * 280);
+    state.combo = 0;
+    state.lastKey = performance.now();
+    state.locked = false;
+    state.phase = "fight";
+
+    hpP.style.width = (state.hp / state.hpMax) * 100 + "%";
+    hpE.style.width = "100%";
+    E.rig.classList.remove("ko");
+
+    hideOverlay();
+    newWord();
+    updateHUD();
+    focusKeyboard();
+  }
+
+  function roundClear() {
+    if (state.phase !== "fight") return;
+    state.phase = "over";
+    state.locked = true;
+
+    E.rig.classList.remove("hurt");
+    E.rig.classList.add("ko");
+    spark(E.rig, "#ffd479");
+    sfx("heavy");
+
+    var r = state.round;
+    var w = wpm();
+    var a = accuracy();
+
+    setTimeout(function () {
+      showOverlay(
+        "Round " + r + " cleared",
+        "Victory",
+        "Shadow is down. You're at " + w + " WPM with " + a + "% accuracy. The next opponent hits harder.",
+        "Round " + (r + 1),
+        nextRound
+      );
+    }, 780);
+  }
+
+  function gameOver() {
+    if (state.phase !== "fight") return;
+    state.phase = "over";
+    state.locked = true;
+
+    P.rig.classList.remove("hurt-p");
+    P.rig.classList.add("ko");
+
+    var r = state.round;
+    var w = wpm();
+    var a = accuracy();
+    var c = state.best;
+
+    setTimeout(function () {
+      showOverlay(
+        "Knocked out",
+        "You fell",
+        "Reached round " + r + " · " + w + " WPM · " + a + "% accuracy · best combo " + c + ".",
+        "Fight again",
+        startGame
+      );
+    }, 820);
+  }
+
+  /* =========================================================
+     IDLE TIMER + HUD TICK
+     ========================================================= */
+  setInterval(function () {
+    if (state.phase !== "fight") return;
+
+    wpmEl.textContent = wpm();
+    accEl.textContent = accuracy() + "%";
+
+    if (!state.typedOnce) return;   /* don't punish before the first key */
+
+    var now = performance.now();
+    if (now - state.lastKey > state.idleLimit) {
+      state.lastKey = now;
+      state.combo = 0;
+      updateHUD();
+      setTip("Too slow — Shadow attacks", true);
+      enemyStrike(7);
+    }
+  }, 250);
+
+  /* =========================================================
+     BOOT
+     ========================================================= */
+  renderWord();
+  hpP.style.width = "100%";
+  hpE.style.width = "100%";
+
+  showOverlay(
+    "Typing duel",
+    "TypeFight",
+    "Every correct keystroke lands a hit. Complete the word for a finisher. Miss a key — or stall too long — and Shadow strikes back.",
+    "Start fight",
+    startGame
+  );
+})();
+</script>
+
+</body></html>
