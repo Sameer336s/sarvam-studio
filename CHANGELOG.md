@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.5.1 — October 2026
+
+### Changed
+- **New default system prompt**: the personal-assistant brief (Sameer Sayyad's assistant — direct, opinionated,
+  resourceful, no filler; code and design standards; image watermark `sameer._.i` + Instagram handle).
+  Existing installs adopt it once on next launch (`promptVersion` migration); after that your own edits stick.
+- Settings -> Chat & models -> prompt presets now list it first as "Sameer's assistant (default)".
+
 ## 3.4.0 — October 2026
 
 ### Added — Mocha & gold theme (default)

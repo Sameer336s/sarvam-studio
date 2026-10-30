@@ -14,6 +14,7 @@ import type { McpServer } from "@/lib/mcp";
 import {
   DEFAULT_PARAMS,
   DEFAULT_SETTINGS,
+  PROMPT_VERSION,
   type ChatMsg,
   type Conversation,
   type CustomProviderDef,
@@ -201,6 +202,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!["plain", "mesh", "grid"].includes(merged.bgStyle as string)) merged.bgStyle = "plain";
     if (!["sans", "serif", "mono"].includes(merged.fontFamily as string)) merged.fontFamily = "sans";
     if (!["neutral", "warm"].includes(merged.palette as string)) merged.palette = "warm";
+    // The shipped prompt changed: adopt it once, then leave the user's edits alone.
+    if ((merged.promptVersion ?? 0) < PROMPT_VERSION) {
+      merged.systemPrompt = DEFAULT_SETTINGS.systemPrompt;
+      merged.promptVersion = PROMPT_VERSION;
+    }
     if (!["dark", "light", "system"].includes(merged.theme as string)) merged.theme = "dark";
     delete (merged as Record<string, unknown>).temperature;
     delete (merged as Record<string, unknown>).topP;

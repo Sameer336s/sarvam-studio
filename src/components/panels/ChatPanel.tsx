@@ -7,7 +7,7 @@ import { speak, sttEngine, ttsAvailable } from "@/lib/voice";
 import { toast } from "@/components/Toast";
 
 const PROMPT_PRESETS: { name: string; value: string }[] = [
-  { name: "Balanced assistant", value: DEFAULT_SYSTEM_PROMPT },
+  { name: "Sameer's assistant (default)", value: DEFAULT_SYSTEM_PROMPT },
   {
     name: "Concise engineer",
     value:
