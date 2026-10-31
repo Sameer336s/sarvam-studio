@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.5.3
+- Updated the default assistant system prompt to the exact Sameer Sayyad identity, behaviour, standards, and boundaries supplied by the user.
+- Bumped the prompt migration version so existing installs adopt the updated default prompt once.
+- Preserved the existing encrypted, device-local API-key storage implementation and provider configuration.
+
+
 ## 3.5.2 — October 2026
 
 ### Fixed
