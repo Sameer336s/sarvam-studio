@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.5.2 — October 2026
+
+### Fixed
+- **The composer overflowed on phones and pushed the send button off-screen.** The model chip could not
+  shrink, so with six icon buttons the row ran past the edge. The chip now truncates, the row is
+  `overflow-hidden` with a `shrink-0` send button, and the secondary actions (voice mode, read-aloud,
+  MCP) collapse below 640px — they are all still reachable in Settings. Verified at 360, 390, 430, 700
+  and 1100px: send visible, no horizontal scroll.
+
 ## 3.5.1 — October 2026
 
 ### Changed

@@ -966,7 +966,7 @@ export function ChatView({
               style={{ minHeight: 40 }}
             />
             <div className="flex items-center justify-between gap-1.5 px-0.5">
-              <div className="flex min-w-0 items-center gap-0.5">
+              <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden">
                 <ModelPicker value={modelId} onChange={onModelChange} compact />
                 <IconButton
                   title="Attach image or file"
@@ -989,25 +989,27 @@ export function ChatView({
                     <Mic className="h-4 w-4" />
                   )}
                 </IconButton>
-                <IconButton
-                  title="Voice mode — hands-free conversation"
-                  onClick={enterVoice}
-                  disabled={!ttsAvailable() || sttEngine(!!store.keys["p:sarvam"]?.key) === "none"}
-                >
-                  <AudioLines className="h-4 w-4" />
-                </IconButton>
-                <IconButton
-                  title={settings.speakReplies ? "Stop reading replies aloud" : "Read replies aloud"}
-                  onClick={toggleSpeak}
-                  active={settings.speakReplies}
-                  disabled={!ttsAvailable()}
-                >
-                  {settings.speakReplies ? (
-                    <Volume2 className="h-4 w-4" />
-                  ) : (
-                    <VolumeX className="h-4 w-4" />
-                  )}
-                </IconButton>
+                <span className="hidden items-center gap-0.5 sm:flex">
+                  <IconButton
+                    title="Voice mode — hands-free conversation"
+                    onClick={enterVoice}
+                    disabled={!ttsAvailable() || sttEngine(!!store.keys["p:sarvam"]?.key) === "none"}
+                  >
+                    <AudioLines className="h-4 w-4" />
+                  </IconButton>
+                  <IconButton
+                    title={settings.speakReplies ? "Stop reading replies aloud" : "Read replies aloud"}
+                    onClick={toggleSpeak}
+                    active={settings.speakReplies}
+                    disabled={!ttsAvailable()}
+                  >
+                    {settings.speakReplies ? (
+                      <Volume2 className="h-4 w-4" />
+                    ) : (
+                      <VolumeX className="h-4 w-4" />
+                    )}
+                  </IconButton>
+                </span>
                 <IconButton
                   title="Model parameters"
                   onClick={() => setParamsOpen(true)}
@@ -1031,8 +1033,8 @@ export function ChatView({
                   }}
                 />
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="hidden text-[10.5px] text-muted sm:block">
+              <div className="flex shrink-0 items-center gap-1.5">
+                <span className="hidden text-[10.5px] text-muted lg:block">
                   {settings.sendOnEnter ? "Enter to send · Shift+Enter for a line" : "Ctrl+Enter to send"}
                 </span>
                 {busy ? (

@@ -72,12 +72,12 @@ export function ModelPicker({
       : !!keys[`p:${m.provider}`]?.key;
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative min-w-0" ref={ref}>
       <button
         type="button"
         onClick={toggle}
         className={cn(
-          "btn h-9 gap-2 rounded-full pl-2.5 pr-2.5 text-[12.5px]",
+          "btn h-9 min-w-0 max-w-full gap-2 rounded-full pl-2.5 pr-2.5 text-[12.5px]",
           compact && "h-8",
         )}
         title="Choose model"
@@ -90,7 +90,7 @@ export function ModelPicker({
             style={{ background: PROVIDERS[current?.provider ?? "sarvam"].color }}
           />
         )}
-        <span className="max-w-[170px] truncate font-medium">
+        <span className="min-w-0 truncate font-medium">
           {isAuto ? `Auto · ${autoPick?.model.name ?? "no model"}` : current?.name ?? "Select model"}
         </span>
         {current?.status === "preview" && <span className="chip px-1.5 py-0">preview</span>}
