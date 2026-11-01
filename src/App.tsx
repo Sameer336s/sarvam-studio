@@ -14,7 +14,7 @@ function Shell() {
   const { settings, patchSettings, active, activeModel } = store;
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [tab, setTab] = useState<SettingsTab>("general");
+  const [tab, setTab] = useState<SettingsTab>("appearance");
   const [modelId, setModelId] = useState(settings.defaultModelId);
 
   // follow the active conversation's model
@@ -43,7 +43,7 @@ function Shell() {
   const toggleTheme = () =>
     patchSettings({ theme: settings.theme === "dark" ? "light" : "dark" });
 
-  const openSettings = (t: SettingsTab = "general") => {
+  const openSettings = (t: SettingsTab = "appearance") => {
     setTab(t);
     setSettingsOpen(true);
   };
@@ -87,7 +87,7 @@ function Shell() {
         <Sidebar
           open={sidebarOpen}
           onToggle={() => setSidebarOpen((v) => !v)}
-          onOpenSettings={() => openSettings("general")}
+          onOpenSettings={() => openSettings("providers")}
           onOpenMcp={() => openSettings("mcp")}
         />
 
@@ -147,7 +147,7 @@ function Shell() {
               >
                 {settings.theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </IconButton>
-              <IconButton title="Settings" onClick={() => openSettings("general")}>
+              <IconButton title="Settings" onClick={() => openSettings("appearance")}>
                 <Settings className="h-4 w-4" />
               </IconButton>
             </div>
