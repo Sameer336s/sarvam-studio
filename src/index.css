@@ -494,3 +494,8 @@ html[data-animations="off"] .rise {
 .sheet-solid {
   background: var(--bg-0);
 }
+
+/* Settings sheet: --bg-1 is a hex value, so it must be used directly. */
+.settings-sheet {
+  background: var(--bg-1);
+}

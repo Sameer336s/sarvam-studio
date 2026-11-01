@@ -80,18 +80,18 @@ export function Field({
   hint,
   children,
   className,
+  wide,
 }: {
   label?: string;
   hint?: ReactNode;
   children: ReactNode;
   className?: string;
+  wide?: boolean;
 }) {
   return (
-    <div className={className}>
-      {label && <label className="label">{label}</label>}
+    <Row label={label} hint={hint} wide={wide} className={className}>
       {children}
-      {hint && <p className="mt-1.5 text-[11px] leading-relaxed text-muted/80">{hint}</p>}
-    </div>
+    </Row>
   );
 }
 
@@ -204,10 +204,10 @@ export function Switch({
   hint?: string;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 py-2">
+    <div className="flex items-center justify-between gap-4 px-4 py-2.5">
       <div className="min-w-0">
-        <p className="text-[13px] font-medium text-ink">{label}</p>
-        {hint && <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{hint}</p>}
+        <p className="text-[12.5px] font-medium text-ink">{label}</p>
+        {hint && <p className="mt-0.5 text-[11px] leading-relaxed text-muted">{hint}</p>}
       </div>
       <button
         type="button"
@@ -257,8 +257,8 @@ export function Slider({
   suffix?: string;
 }) {
   return (
-    <div className="py-1.5">
-      <div className="mb-1 flex items-center justify-between">
+    <div className="px-4 py-3">
+      <div className="mb-1.5 flex items-center justify-between">
         <span className="text-[12.5px] font-medium text-ink">{label}</span>
         <span className="chip font-mono">
           {value}
@@ -292,18 +292,63 @@ export function Card({
   actions?: ReactNode;
 }) {
   return (
-    <section className={cn("glass rounded-glass p-4", className)}>
+    <section className={cn("mb-6", className)}>
       {(title || actions) && (
-        <header className="mb-3 flex items-start justify-between gap-3">
+        <header className="mb-1 flex items-end justify-between gap-3 px-1">
           <div>
-            {title && <h3 className="text-[13.5px] font-semibold text-ink">{title}</h3>}
-            {subtitle && <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{subtitle}</p>}
+            {title && (
+              <h3 className="text-[13px] font-semibold tracking-tight text-ink">{title}</h3>
+            )}
+            {subtitle && (
+              <p className="mt-0.5 max-w-[52ch] text-[11.5px] leading-relaxed text-muted">{subtitle}</p>
+            )}
           </div>
           {actions}
         </header>
       )}
-      {children}
+      <div className="divide-y divide-white/[0.07] rounded-xl border border-white/[0.08] bg-white/[0.015]">
+        {children}
+      </div>
     </section>
+  );
+}
+
+/** One row inside a settings section: label on the left, control on the right. */
+export function Row({
+  label,
+  hint,
+  children,
+  wide,
+  className,
+}: {
+  label?: ReactNode;
+  hint?: ReactNode;
+  children?: ReactNode;
+  wide?: boolean;
+  className?: string;
+}) {
+  if (wide) {
+    return (
+      <div className={cn("px-4 py-3", className)}>
+        {label && <p className="text-[12.5px] font-medium text-ink">{label}</p>}
+        {hint && <p className="mt-0.5 text-[11px] leading-relaxed text-muted">{hint}</p>}
+        <div className="mt-2">{children}</div>
+      </div>
+    );
+  }
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-start gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4",
+        className,
+      )}
+    >
+      <div className="min-w-0">
+        {label && <p className="text-[12.5px] font-medium text-ink">{label}</p>}
+        {hint && <p className="mt-0.5 text-[11px] leading-relaxed text-muted">{hint}</p>}
+      </div>
+      <div className="shrink-0">{children}</div>
+    </div>
   );
 }
 

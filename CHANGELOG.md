@@ -1,5 +1,24 @@
 # Changelog
 
+## 3.6.0 — November 2026
+
+### Changed — settings rebuilt like a modern AI app
+- **Two-pane settings** with a searchable section list: General, Appearance, Chat & models,
+  Personalization, Voice, Connectors, Model providers, Model catalogue, Data controls.
+- Rows instead of cards: label and description on the left, the control on the right, hairline
+  dividers between them. On phones the sections become a horizontal strip and each row stacks.
+- New **Personalization** section (custom instructions + presets) and **Voice** section, split out of
+  the old combined panel. New **General** section: colour mode, palette, recommended setup, about.
+- Search matches labels, descriptions and keywords ("temperature", "ollama", "backup", ...).
+- The sidebar Settings button and the header gear now both open the settings root; the "add a key"
+  prompts still jump straight to Model providers.
+
+### Changed — smarter empty state
+- Suggestion cards replaced with one-tap prompt pills, plus a "Continue" row with your recent chats.
+
+### Fixed
+- The settings sheet was see-through: `--bg-1` is a hex value and cannot be wrapped in `rgb()`.
+
 ## 3.5.3
 - Updated the default assistant system prompt to the exact Sameer Sayyad identity, behaviour, standards, and boundaries supplied by the user.
 - Bumped the prompt migration version so existing installs adopt the updated default prompt once.

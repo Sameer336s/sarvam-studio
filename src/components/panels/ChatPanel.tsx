@@ -1,37 +1,11 @@
 import { RotateCcw } from "lucide-react";
 import { useApp } from "@/lib/store";
-import { DEFAULT_PARAMS, DEFAULT_SYSTEM_PROMPT, type ModelParams } from "@/lib/types";
-import { Button, Card, Field, Select, Slider, Switch, Textarea } from "@/components/ui";
+import { DEFAULT_PARAMS, type ModelParams } from "@/lib/types";
+import { Button, Card, Field, Select, Slider, Switch } from "@/components/ui";
 import { MaxTokensField } from "@/components/MaxTokensField";
-import { speak, sttEngine, ttsAvailable } from "@/lib/voice";
-import { toast } from "@/components/Toast";
-
-const PROMPT_PRESETS: { name: string; value: string }[] = [
-  { name: "Sameer's assistant (default)", value: DEFAULT_SYSTEM_PROMPT },
-  {
-    name: "Concise engineer",
-    value:
-      "You are a senior software engineer. Answer with working code first, then a short explanation. No filler, no apologies. Point out bugs and edge cases. Use the user's language.",
-  },
-  {
-    name: "Bharat multilingual",
-    value:
-      "You are a helpful assistant fluent in Indian languages. Always reply in the language and script the user writes in (Devanagari, Tamil, Bengali, Telugu, etc.). Keep technical terms in English when that is clearer, and explain them briefly in the user's language.",
-  },
-  {
-    name: "Teacher / explainer",
-    value:
-      "You are a patient teacher. Explain step by step with small examples, then summarise in three bullet points. Ask one clarifying question if the request is ambiguous.",
-  },
-  {
-    name: "Tool-first agent",
-    value:
-      "You are an agent with MCP tools. Prefer calling a tool over guessing, and say which tool you used. If a tool fails, report the error plainly instead of inventing an answer.",
-  },
-];
 
 export function ChatPanel() {
-  const { settings, patchSettings, visibleModels, keys } = useApp();
+  const { settings, patchSettings, visibleModels } = useApp();
 
   const patchParams = (patch: Partial<ModelParams>) =>
     patchSettings({ params: { ...settings.params, ...patch } });
@@ -39,40 +13,7 @@ export function ChatPanel() {
   const defaultModel = visibleModels.find((m) => m.id === settings.defaultModelId);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card
-        className="lg:col-span-2"
-        title="System prompt"
-        subtitle="Sent as the system message on every request. Leave empty to send none."
-        actions={
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => patchSettings({ systemPrompt: DEFAULT_SYSTEM_PROMPT })}
-          >
-            <RotateCcw className="h-3.5 w-3.5" /> Reset
-          </Button>
-        }
-      >
-        <Textarea
-          value={settings.systemPrompt}
-          onChange={(v) => patchSettings({ systemPrompt: v })}
-          rows={6}
-          placeholder="You are a helpful assistant…"
-        />
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {PROMPT_PRESETS.map((p) => (
-            <button
-              key={p.name}
-              onClick={() => patchSettings({ systemPrompt: p.value })}
-              className="chip hover:border-accent/40 hover:text-ink"
-            >
-              {p.name}
-            </button>
-          ))}
-        </div>
-      </Card>
-
+    <div>
       <Card
         title="Sampling defaults"
         subtitle="Applies to every new chat. Any chat can override these from the composer's parameters button."
@@ -254,79 +195,6 @@ export function ChatPanel() {
         </div>
       </Card>
 
-      <Card
-        title="Talk mode"
-        subtitle="Speak your messages, hear the replies. Speech-to-text uses your Sarvam key (Saaras); replies use the phone's own voice."
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="chip gap-1">
-            {sttEngine(!!keys["p:sarvam"]?.key) === "sarvam"
-              ? "Sarvam Saaras ready"
-              : sttEngine(false) === "browser"
-                ? "Browser speech engine"
-                : "No speech input"}
-          </span>
-          <span className="chip gap-1">{ttsAvailable() ? "Voice output ready" : "No voice output"}</span>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={!ttsAvailable()}
-            onClick={() => {
-              const ok = speak("Namaste, main aapki madad ke liye taiyaar hoon.", {
-                rate: settings.voiceRate,
-                lang: "hi-IN",
-              });
-              if (!ok) toast("This device has no speech engine", "warn");
-            }}
-          >
-            Test voice
-          </Button>
-        </div>
-
-        <Switch
-          label="Read replies aloud"
-          hint="Speaks each finished answer with the phone's voice, in the language it was written in."
-          checked={settings.speakReplies}
-          onChange={(v) => patchSettings({ speakReplies: v })}
-        />
-        <Switch
-          label="Send as soon as I stop talking"
-          hint="Off = the transcript lands in the composer so you can edit it first."
-          checked={settings.talkAutoSend}
-          onChange={(v) => patchSettings({ talkAutoSend: v })}
-        />
-        <Slider
-          label="Speaking rate"
-          value={settings.voiceRate}
-          min={0.6}
-          max={1.8}
-          step={0.05}
-          onChange={(v) => patchSettings({ voiceRate: v })}
-          suffix="x"
-        />
-        <Field label="Speech-to-text language" hint="“Auto detect” works well for mixed Hindi/English.">
-          <Select
-            value={settings.sttLanguage}
-            onChange={(v) => patchSettings({ sttLanguage: v })}
-            options={[
-              { value: "unknown", label: "Auto detect" },
-              { value: "hi-IN", label: "Hindi" },
-              { value: "en-IN", label: "English (India)" },
-              { value: "bn-IN", label: "Bengali" },
-              { value: "mr-IN", label: "Marathi" },
-              { value: "ta-IN", label: "Tamil" },
-              { value: "te-IN", label: "Telugu" },
-              { value: "gu-IN", label: "Gujarati" },
-              { value: "kn-IN", label: "Kannada" },
-              { value: "ml-IN", label: "Malayalam" },
-              { value: "pa-IN", label: "Punjabi" },
-              { value: "od-IN", label: "Odia" },
-              { value: "as-IN", label: "Assamese" },
-              { value: "ur-IN", label: "Urdu" },
-            ]}
-          />
-        </Field>
-      </Card>
     </div>
   );
 }

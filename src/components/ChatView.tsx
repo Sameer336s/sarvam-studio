@@ -17,6 +17,7 @@ import {
   Plug,
   RefreshCw,
   Settings2,
+  Sparkles,
   Square,
   AudioLines,
   Trash2,
@@ -143,6 +144,11 @@ export function ChatView({
     () => pickAutoModel(store.visibleModels, store.keys, customProviders, {}),
     [store.visibleModels, store.keys, customProviders],
   );
+  const recentChats = useMemo(
+    () => store.conversations.filter((c) => c.messages.length > 0).slice(0, 4),
+    [store.conversations],
+  );
+
   const displayModel = isAuto
     ? autoPick?.model ?? null
     : store.modelById(modelId) ?? store.activeModel ?? store.visibleModels[0];
@@ -827,18 +833,41 @@ export function ChatView({
               images or files
               {tools.length > 0 ? `, with ${tools.length} MCP tool${tools.length === 1 ? "" : "s"} ready` : ""}.
             </p>
-            <div className="mt-6 grid w-full gap-2 sm:grid-cols-2">
+            {/* one-tap prompts, phrased as things you would actually type */}
+            <div className="mt-6 flex w-full flex-wrap justify-center gap-2">
               {suggestions.map((s) => (
                 <button
                   key={s.title}
                   onClick={() => void runSend(s.body)}
-                  className="glass rounded-xl p-3 text-left transition-colors hover:border-accent/40"
+                  className="group flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[12px] text-muted transition-colors hover:border-accent/40 hover:bg-accent/10 hover:text-ink"
+                  title={s.body}
                 >
-                  <p className="text-[12.5px] font-semibold text-ink">{s.title}</p>
-                  <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-relaxed text-muted">{s.body}</p>
+                  <Sparkles className="h-3 w-3 text-accent/70 group-hover:text-accent" />
+                  {s.title}
                 </button>
               ))}
             </div>
+
+            {/* pick up where you left off */}
+            {recentChats.length > 0 && (
+              <div className="mt-8 w-full">
+                <p className="mb-2 text-center text-[10.5px] font-semibold uppercase tracking-[0.18em] text-muted/70">
+                  Continue
+                </p>
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {recentChats.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => store.setActive(c.id)}
+                      className="max-w-[15rem] truncate rounded-lg px-2.5 py-1.5 text-[11.5px] text-muted transition-colors hover:bg-white/8 hover:text-ink"
+                      title={c.title}
+                    >
+                      {c.title || "New chat"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div
